@@ -22,6 +22,11 @@ Because this is a beta, macOS will block it on first launch. To allow it (just o
 
 After that, it opens normally.
 
+Or just run this command in terminal:
+```
+xattr -cr /Applications/ReadPlease.app
+```
+
 ## Setup
 
 When you first open the app it runs a quick setup:
