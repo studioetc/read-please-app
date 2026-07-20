@@ -42,7 +42,8 @@ public enum TTSEngineState: Sendable {
     case paused
 }
 
-public protocol TTSEngine: AnyObject {  // Removed Sendable requirement for now as AVSpeechSynthesizer is main thread focused
+@MainActor
+public protocol TTSEngine: AnyObject {
     var id: String { get }
     var availableVoices: [Voice] { get }
     var state: TTSEngineState { get }

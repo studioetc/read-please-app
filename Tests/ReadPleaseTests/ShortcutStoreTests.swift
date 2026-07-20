@@ -89,7 +89,8 @@ final class ShortcutStoreTests: XCTestCase {
         let playPause = try XCTUnwrap(actions["playPause"] as? [[String: Any]])
         let firstShortcut = try XCTUnwrap(playPause.first?["shortcut"] as? [String: Any])
 
-        XCTAssertEqual(firstShortcut["key"] as? String, "f14")
+        XCTAssertEqual(firstShortcut["key"] as? String, "backtick")
+        XCTAssertEqual(firstShortcut["modifiers"] as? [String], ["control"])
         XCTAssertNil(playPause.first?["id"])
     }
 
@@ -103,4 +104,3 @@ final class ShortcutStoreTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 }
-

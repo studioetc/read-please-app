@@ -6,12 +6,20 @@ import Carbon
 public final class TextSelectionService {
     public static let shared = TextSelectionService()
 
+    private static let transientPasteboardType = NSPasteboard.PasteboardType(
+        "org.nspasteboard.TransientType"
+    )
+    private static let captureMarkerPasteboardType = NSPasteboard.PasteboardType(
+        "com.onestepp.ReadPlease.clipboard-capture"
+    )
+
     // Toggle to allow Cmd+C clipboard fallback when AX fails
     public var enableClipboardFallback: Bool = true
 
     private var accessibilityRestrictedApps = Set<String>()
     private var activationObserver: NSObjectProtocol?
     private var lastActiveExternalApp: NSRunningApplication?
+    private var isClipboardCaptureInProgress = false
 
     // Apps known to need clipboard fallback (poor AX support)
     private let clipboardFallbackApps = [
@@ -65,7 +73,7 @@ public final class TextSelectionService {
         AXIsProcessTrusted()
     }
 
-    public func getSelectedText() -> String? {
+    public func getSelectedText() async -> String? {
         let frontApp = NSWorkspace.shared.frontmostApplication
         let bundleID = frontApp?.bundleIdentifier ?? ""
         let appName = frontApp?.localizedName?.lowercased() ?? ""
@@ -92,10 +100,10 @@ public final class TextSelectionService {
             || accessibilityRestrictedApps.contains(bundleID)
         {
             print("TextSelectionService: Using clipboard fallback for editor/restricted app.")
-            return getSelectedTextViaClipboard()
+            return await getSelectedTextViaClipboard()
         }
 
-        return getSelectedTextViaClipboard()
+        return await getSelectedTextViaClipboard()
     }
 
     public func getSelectedTextFromLastActiveAppViaAccessibility() -> String? {
@@ -238,9 +246,15 @@ public final class TextSelectionService {
         }
     }
 
-    private func getSelectedTextViaClipboard() -> String? {
+    private func getSelectedTextViaClipboard() async -> String? {
+        guard !isClipboardCaptureInProgress else {
+            print("TextSelectionService: Clipboard capture already in progress.")
+            return nil
+        }
+        isClipboardCaptureInProgress = true
+        defer { isClipboardCaptureInProgress = false }
+
         let pasteboard = NSPasteboard.general
-        let oldChangeCount = pasteboard.changeCount
 
         // 1. Save existing clipboard items
         var savedItems: [NSPasteboardItem] = []
@@ -256,6 +270,15 @@ public final class TextSelectionService {
             }
         }
 
+        // Replace the current contents with a private, transient marker before copying. Keeping
+        // the marker out of the public string type prevents it from being pasted or recorded as
+        // text by clipboard managers while still giving us a fresh ownership change to observe.
+        let captureChangeCount = Self.prepareClipboardForCapture(pasteboard)
+
+        defer {
+            restorePasteboard(savedItems, on: pasteboard)
+        }
+
         // Simulate Cmd+C
         let source = CGEventSource(stateID: .combinedSessionState)
         let keyC = CGKeyCode(kVK_ANSI_C)
@@ -268,21 +291,42 @@ public final class TextSelectionService {
         up?.flags = .maskCommand
         up?.post(tap: .cghidEventTap)
 
-        // Wait loop (simple ver)
-        // In production, might want async retry, but for synchronous return:
-        for _ in 0..<10 {
-            usleep(50000)  // 50ms
-            if pasteboard.changeCount != oldChangeCount {
-                let newText = pasteboard.string(forType: .string)
+        // Poll without blocking the main actor. Clipboard owners may provide their data lazily,
+        // so wait for both an ownership change and copied text.
+        for _ in 0..<20 {
+            do {
+                try await Task.sleep(for: .milliseconds(25))
+            } catch {
+                return nil
+            }
 
-                // 2. Restore original clipboard
-                restorePasteboard(savedItems, on: pasteboard)
-
-                return newText
+            if let copiedText = Self.validatedClipboardText(
+                changeCount: pasteboard.changeCount,
+                captureChangeCount: captureChangeCount,
+                text: pasteboard.string(forType: .string)
+            ) {
+                return copiedText
             }
         }
 
         return nil
+    }
+
+    static func validatedClipboardText(
+        changeCount: Int,
+        captureChangeCount: Int,
+        text: String?
+    ) -> String? {
+        guard changeCount != captureChangeCount, let text else { return nil }
+        return text
+    }
+
+    @discardableResult
+    static func prepareClipboardForCapture(_ pasteboard: NSPasteboard) -> Int {
+        pasteboard.clearContents()
+        pasteboard.setData(Data(), forType: transientPasteboardType)
+        pasteboard.setString(UUID().uuidString, forType: captureMarkerPasteboardType)
+        return pasteboard.changeCount
     }
 
     private func restorePasteboard(_ items: [NSPasteboardItem], on pasteboard: NSPasteboard) {

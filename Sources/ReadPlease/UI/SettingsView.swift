@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var playbackManager: PlaybackManager
     @Bindable var shortcutStore: ShortcutStore
+    @Bindable private var audioInterruptionSettings = AudioInterruptionSettings.shared
     let onboarding: OnboardingCoordinator
 
     @Environment(\.openWindow) private var openWindow
@@ -52,6 +53,18 @@ struct SettingsView: View {
             }
 
             Section("Advanced") {
+                Picker(selection: $audioInterruptionSettings.mode) {
+                    ForEach(AudioInterruptionMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                } label: {
+                    Label("Audio interruption", systemImage: "speaker.slash")
+                }
+                .pickerStyle(.menu)
+                .onChange(of: audioInterruptionSettings.mode) {
+                    playbackManager.audioInterruptionModeDidChange()
+                }
+
                 LabeledContent {
                     Button("Open") {
                         NSApp.activate(ignoringOtherApps: true)

@@ -18,5 +18,7 @@
     <true/>
     <key>NSAppleEventsUsageDescription</key>
     <string>Read Please needs to control other applications to read selected text.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Read Please needs audio capture access to mute other audio while speaking.</string>
 </dict>
 </plist>

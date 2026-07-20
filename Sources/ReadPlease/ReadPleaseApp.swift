@@ -49,6 +49,8 @@ struct ReadPleaseApp: App {
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private let shortcutActionCoordinator = ShortcutActionCoordinator()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupApp()
     }
@@ -58,44 +60,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         OnboardingCoordinator.shared.refreshAccessibility()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        PlaybackManager.shared.stop()
+    }
+
     @MainActor
     private func setupApp() {
         print("ReadPlease: App Initializing (AppDelegate)...")
 
-        ShortcutManager.shared.onAction = { action in
-            Task { @MainActor in
-                let manager = PlaybackManager.shared
-
-                switch action {
-                case .playPause:
-                    print("Shortcut triggered! Toggling playback...")
-                    switch manager.state {
-                    case .playing:
-                        if let newText = TextSelectionService.shared.getSelectedText(),
-                            !newText.isEmpty,
-                            newText != manager.currentText
-                        {
-                            manager.play(text: newText)
-                        } else {
-                            manager.pause()
-                        }
-                    case .paused:
-                        if let newText = TextSelectionService.shared.getSelectedText(),
-                            !newText.isEmpty,
-                            newText != manager.currentText
-                        {
-                            manager.play(text: newText)
-                        } else {
-                            manager.resume()
-                        }
-                    case .stopped:
-                        manager.playSelection()
-                    }
-                case .stop:
-                    print("Shortcut triggered! Stopping playback...")
-                    manager.stop()
-                }
-            }
+        ShortcutManager.shared.onAction = { [weak self] action in
+            self?.shortcutActionCoordinator.handle(action)
         }
         ShortcutStore.shared.reloadFromDiskIfNeeded()
 

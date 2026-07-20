@@ -32,16 +32,42 @@ public class PlaybackManager {
     }
     public private(set) var currentText: String?
     public private(set) var statusMessage: String?
+    private(set) var actionRevision: UInt = 0
 
     // Dependencies
     private let textSelectionService = TextSelectionService.shared
+    private let audioMuteController: any AudioMuting
+    private let audioInterruptionMode: @MainActor () -> AudioInterruptionMode
+    private let audioMuteRetryDelay: Duration
     private var activeEngine: TTSEngine
+    private var activeAudioInterruptionMode: AudioInterruptionMode?
+    private var audioMuteRetryTask: Task<Void, Never>?
+    private var audioMuteStartWasAttempted = false
 
-    public init(engine: TTSEngine? = nil) {
+    public convenience init(engine: TTSEngine? = nil) {
+        self.init(
+            engine: engine,
+            audioMuteController: AudioMuteController.shared,
+            audioInterruptionMode: { AudioInterruptionSettings.shared.mode },
+            audioMuteRetryDelay: .milliseconds(150)
+        )
+    }
+
+    init(
+        engine: TTSEngine?,
+        audioMuteController: any AudioMuting,
+        audioInterruptionMode: @escaping @MainActor () -> AudioInterruptionMode,
+        audioMuteRetryDelay: Duration = .milliseconds(150)
+    ) {
         let resolvedEngine = engine ?? SystemTTSEngine()
         let defaults = UserDefaults.standard
 
         self.activeEngine = resolvedEngine
+        self.audioMuteController = audioMuteController
+        self.audioInterruptionMode = audioInterruptionMode
+        self.audioMuteRetryDelay = audioMuteRetryDelay
+        self.activeAudioInterruptionMode = nil
+        self.audioMuteRetryTask = nil
         if defaults.object(forKey: DefaultsKey.rate) != nil {
             self.currentRate = defaults.float(forKey: DefaultsKey.rate)
         } else {
@@ -53,9 +79,7 @@ public class PlaybackManager {
         self.statusMessage = nil
 
         self.activeEngine.onStateChange = { [weak self] newState in
-            Task { @MainActor in
-                self?.handleEngineStateChange(newState)
-            }
+            self?.handleEngineStateChange(newState)
         }
     }
 
@@ -126,6 +150,13 @@ public class PlaybackManager {
 
     private func handleEngineStateChange(_ newState: TTSEngineState) {
         state = newState
+        switch newState {
+        case .playing:
+            startAudioInterruptionIfNeeded(for: actionRevision)
+        case .paused, .stopped:
+            endAudioInterruption()
+        }
+
         if newState == .stopped {
             currentText = nil
         }
@@ -140,13 +171,13 @@ public class PlaybackManager {
     }
 
     @MainActor
-    public func togglePlayPause() {
+    public func togglePlayPause() async {
         if state == .playing {
             pause()
         } else if state == .paused {
             resume()
         } else {
-            playSelection()
+            await playSelection()
         }
     }
 
@@ -169,13 +200,40 @@ public class PlaybackManager {
     }
 
     @MainActor
-    public func playSelection() {
-        guard let text = textSelectionService.getSelectedText() else {
-            print("No text selected")
-            setStatusMessage("No selected text found.")
+    public func playSelection() async {
+        let startingRevision = actionRevision
+        let selectedText = await textSelectionService.getSelectedText()
+        guard !Task.isCancelled, actionRevision == startingRevision else { return }
+        handleShortcutPlayPause(selectedText: selectedText)
+    }
+
+    func handleShortcutPlayPause(selectedText: String?) {
+        let hasSelection = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+
+        if state == .stopped {
+            guard hasSelection, let selectedText else {
+                print("No text selected")
+                setStatusMessage("No selected text found.")
+                return
+            }
+            play(text: selectedText)
             return
         }
-        play(text: text)
+
+        if hasSelection, let selectedText, selectedText != currentText {
+            play(text: selectedText)
+            return
+        }
+
+        switch state {
+        case .playing:
+            pause()
+        case .paused:
+            resume()
+        case .stopped:
+            // Handled above.
+            break
+        }
     }
 
     @MainActor
@@ -187,37 +245,108 @@ public class PlaybackManager {
         }
 
         clearStatusMessage()
+        actionRevision &+= 1
         print("PlaybackManager: play(text:) called with \(trimmedText.count) characters")
-
-        if state != .stopped {
-            activeEngine.stop()
-        }
 
         currentText = trimmedText
         let options = SpeechOptions(rate: currentRate, voiceId: currentVoiceId)
         print(
             "PlaybackManager: Calling engine.speak with rate=\(currentRate) voice=\(currentVoiceId ?? "nil")"
         )
+        startAudioInterruptionIfNeeded(for: actionRevision)
         activeEngine.speak(text: trimmedText, options: options)
     }
 
     @MainActor
     public func pause() {
         clearStatusMessage()
+        actionRevision &+= 1
+        endAudioInterruption()
         activeEngine.pause()
     }
 
     @MainActor
     public func resume() {
         clearStatusMessage()
+        actionRevision &+= 1
         activeEngine.resume()
     }
 
     @MainActor
     public func stop() {
         clearStatusMessage()
+        actionRevision &+= 1
+        endAudioInterruption()
         activeEngine.stop()
         currentText = nil
+    }
+
+    func audioInterruptionModeDidChange() {
+        endAudioInterruption()
+        if state == .playing {
+            startAudioInterruptionIfNeeded(for: actionRevision)
+        }
+    }
+
+    private func startAudioInterruptionIfNeeded(for playbackRevision: UInt) {
+        let mode = audioInterruptionMode()
+        guard mode != .off else {
+            endAudioInterruption()
+            return
+        }
+        guard activeAudioInterruptionMode != mode else { return }
+
+        audioMuteRetryTask?.cancel()
+        audioMuteRetryTask = nil
+
+        audioMuteStartWasAttempted = true
+        if audioMuteController.start(mode: mode) {
+            activeAudioInterruptionMode = mode
+            return
+        }
+
+        audioMuteRetryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(for: self.audioMuteRetryDelay)
+            } catch {
+                return
+            }
+
+            guard
+                self.actionRevision == playbackRevision,
+                self.state == .playing,
+                self.audioInterruptionMode() == mode
+            else { return }
+
+            if self.audioMuteController.start(mode: mode) {
+                self.activeAudioInterruptionMode = mode
+            } else {
+                self.setStatusMessage(self.audioInterruptionFailureMessage(for: mode))
+            }
+        }
+    }
+
+    private func endAudioInterruption() {
+        audioMuteRetryTask?.cancel()
+        audioMuteRetryTask = nil
+
+        if activeAudioInterruptionMode != nil || audioMuteStartWasAttempted {
+            audioMuteController.stop()
+        }
+        activeAudioInterruptionMode = nil
+        audioMuteStartWasAttempted = false
+    }
+
+    private func audioInterruptionFailureMessage(for mode: AudioInterruptionMode) -> String {
+        switch mode {
+        case .off:
+            return ""
+        case .muteChromeWhileSpeaking:
+            return "Reading started, but Chrome audio couldn't be muted."
+        case .muteAllOtherAudioWhileSpeaking:
+            return "Reading started, but other audio couldn't be muted."
+        }
     }
 
     @MainActor

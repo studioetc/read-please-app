@@ -1,12 +1,13 @@
 import AVFoundation
 import Foundation
 
-public class SystemTTSEngine: NSObject, TTSEngine, AVSpeechSynthesizerDelegate, @unchecked Sendable
-{
+@MainActor
+public class SystemTTSEngine: NSObject, TTSEngine, @preconcurrency AVSpeechSynthesizerDelegate {
     public let id = "system"
     private let synthesizer = AVSpeechSynthesizer()
     private let pronunciationStore = PronunciationStore.shared
     private var pronunciationRules: PronunciationRuleSet { pronunciationStore.ruleSet }
+    private var activeUtterance: AVSpeechUtterance?
     public var onStateChange: ((TTSEngineState) -> Void)?
     public private(set) var state: TTSEngineState = .stopped {
         didSet {
@@ -63,7 +64,11 @@ public class SystemTTSEngine: NSObject, TTSEngine, AVSpeechSynthesizerDelegate, 
             print("SystemTTSEngine: Using system default voice")
         }
 
-        // Stop current if any
+        // Mark the replacement first so a delayed cancellation callback from the previous
+        // utterance cannot stop or clear the new playback session.
+        activeUtterance = utterance
+
+        // Stop current if any. AVSpeechSynthesizer otherwise queues the new utterance.
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
@@ -134,6 +139,7 @@ public class SystemTTSEngine: NSObject, TTSEngine, AVSpeechSynthesizerDelegate, 
     }
 
     public func stop() {
+        activeUtterance = nil
         synthesizer.stopSpeaking(at: .immediate)
         state = .stopped
     }
@@ -154,18 +160,23 @@ public class SystemTTSEngine: NSObject, TTSEngine, AVSpeechSynthesizerDelegate, 
     public func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance
     ) {
+        guard utterance === activeUtterance else { return }
         state = .playing
     }
 
     public func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance
     ) {
+        guard utterance === activeUtterance else { return }
+        activeUtterance = nil
         state = .stopped
     }
 
     public func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance
     ) {
+        guard utterance === activeUtterance else { return }
+        activeUtterance = nil
         state = .stopped
     }
 }
