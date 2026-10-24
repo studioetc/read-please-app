@@ -71,6 +71,14 @@ final class ShortcutConfigCodecTests: XCTestCase {
         XCTAssertNil(binding["id"])
     }
 
+    func testLegacyMigrationAddsScreenAreaDefaults() throws {
+        let decoded = try ShortcutConfigCodec.decodeFile(from: Data(#"{"version":1,"actions":{"stop":[]}}"#.utf8))
+        XCTAssertTrue(decoded.needsMigration)
+        XCTAssertEqual(decoded.bindingsByAction[.readScreenArea]?.map(\.shortcut), ShortcutAction.readScreenArea.defaultBindings.map(\.shortcut))
+        XCTAssertEqual(decoded.bindingsByAction[.readScreenArea]?.map(\.enabled), [true, true])
+        XCTAssertEqual(decoded.bindingsByAction[.stop], [])
+    }
+
     func testEncodeOmitsEmptyDescription() throws {
         let bindings: [ShortcutAction: [ShortcutBinding]] = [
             .playPause: [

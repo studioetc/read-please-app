@@ -154,6 +154,8 @@ struct SettingsView: View {
             "playpause"
         case .stop:
             "stop.fill"
+        case .readScreenArea:
+            "viewfinder"
         }
     }
 

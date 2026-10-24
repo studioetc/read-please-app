@@ -5,6 +5,7 @@ import KeyboardShortcuts
 enum ShortcutAction: String, CaseIterable, Codable, Hashable, Sendable {
     case playPause
     case stop
+    case readScreenArea
 
     var title: String {
         switch self {
@@ -12,6 +13,8 @@ enum ShortcutAction: String, CaseIterable, Codable, Hashable, Sendable {
             "Play / Pause"
         case .stop:
             "Stop"
+        case .readScreenArea:
+            "Read Screen Area"
         }
     }
 
@@ -21,6 +24,8 @@ enum ShortcutAction: String, CaseIterable, Codable, Hashable, Sendable {
             "Start reading the current selection, pause active playback, or resume paused playback."
         case .stop:
             "Stop the current speech immediately."
+        case .readScreenArea:
+            "Select an area of the screen and read its text aloud."
         }
     }
 
@@ -56,6 +61,21 @@ enum ShortcutAction: String, CaseIterable, Codable, Hashable, Sendable {
                 ShortcutBinding(
                     id: "default.stop.f15",
                     shortcut: .init(.f15),
+                    enabled: true,
+                    source: .defaultValue
+                ),
+            ]
+        case .readScreenArea:
+            [
+                ShortcutBinding(
+                    id: "default.readScreenArea.controlTwo",
+                    shortcut: .init(.two, modifiers: [.control]),
+                    enabled: true,
+                    source: .defaultValue
+                ),
+                ShortcutBinding(
+                    id: "default.readScreenArea.f16",
+                    shortcut: .init(.f16),
                     enabled: true,
                     source: .defaultValue
                 ),

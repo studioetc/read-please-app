@@ -20,6 +20,7 @@ final class ShortcutManager: @unchecked Sendable {
                 let recorderName = binding.recorderName
                 let taskID = binding.id
 
+                ScreenAreaTiming.logger.notice("shortcut_registered action=\(action.rawValue, privacy: .public) key=\(binding.shortcut.carbonKeyCode) enabled=\(binding.enabled)")
                 listenerTasks[taskID] = Task { [weak self] in
                     for await _ in KeyboardShortcuts.events(.keyUp, for: recorderName) {
                         guard !Task.isCancelled else { return }
@@ -35,6 +36,7 @@ final class ShortcutManager: @unchecked Sendable {
     }
 
     private func handle(_ action: ShortcutAction) {
+        ScreenAreaTiming.logger.notice("shortcut_received action=\(action.rawValue, privacy: .public) recorder=\(self.isRecorderActive)")
         guard !isRecorderActive else { return }
         onAction?(action)
     }

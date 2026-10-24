@@ -10,7 +10,6 @@ final class ShortcutStore {
     static let shared = ShortcutStore()
 
     private enum Constants {
-        static let latestConfigVersion = 2
         static let configFileName = "shortcuts.json"
     }
 
@@ -88,7 +87,7 @@ final class ShortcutStore {
             return
         }
 
-        guard existing.shortcut != shortcut else {
+        guard existing.shortcut != shortcut || !existing.enabled else {
             syncRecorderStorage()
             return
         }
@@ -98,6 +97,7 @@ final class ShortcutStore {
             guard binding.id == id else { return binding }
             var updated = binding
             updated.shortcut = shortcut
+            updated.enabled = true
             if updated.source == .defaultValue {
                 updated.source = .custom
             }
@@ -159,7 +159,7 @@ final class ShortcutStore {
     }
 
     private func loadFromDisk(force: Bool, announceSuccess: Bool) throws {
-        if !FileManager.default.fileExists(atPath: configFileURL.path()) {
+        if !FileManager.default.fileExists(atPath: configFileURL.path(percentEncoded: false)) {
             try ensureConfigFileExists()
         }
 
@@ -172,7 +172,7 @@ final class ShortcutStore {
         syncRecorderStorage()
         refreshRuntimeBindings()
 
-        if decoded.version == 1 {
+        if decoded.needsMigration {
             persistCurrentState()
         } else {
             lastKnownFileModificationDate = try fileModificationDate(for: configFileURL)
@@ -233,7 +233,7 @@ final class ShortcutStore {
             withIntermediateDirectories: true
         )
 
-        guard !FileManager.default.fileExists(atPath: configFileURL.path()) else { return }
+        guard !FileManager.default.fileExists(atPath: configFileURL.path(percentEncoded: false)) else { return }
         persistCurrentState()
     }
 
@@ -292,8 +292,8 @@ final class ShortcutStore {
     }
 
     private func fileModificationDate(for url: URL) throws -> Date? {
-        guard FileManager.default.fileExists(atPath: url.path()) else { return nil }
-        return try FileManager.default.attributesOfItem(atPath: url.path())[.modificationDate] as? Date
+        guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) else { return nil }
+        return try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))[.modificationDate] as? Date
     }
 
     private static func defaultBindingsByAction() -> [ShortcutAction: [ShortcutBinding]] {
@@ -323,6 +323,7 @@ final class ShortcutStore {
 struct ShortcutConfigCodec {
     struct DecodedFile: Sendable {
         let version: Int
+        let needsMigration: Bool
         let bindingsByAction: [ShortcutAction: [ShortcutBinding]]
     }
 
@@ -382,7 +383,7 @@ struct ShortcutConfigCodec {
                         source: binding.source ?? .custom
                     )
                 }
-                return DecodedFile(version: 1, bindingsByAction: bindings)
+                return DecodedFile(version: 1, needsMigration: true, bindingsByAction: bindings)
             case 2:
                 let file = try decoder.decode(ShortcutConfigFileV2.self, from: data)
                 let bindings = try decodeBindings(file.actions) { binding in
@@ -394,7 +395,11 @@ struct ShortcutConfigCodec {
                         source: binding.source ?? .custom
                     )
                 }
-                return DecodedFile(version: 2, bindingsByAction: bindings)
+                return DecodedFile(
+                    version: 2,
+                    needsMigration: file.actions[ShortcutAction.readScreenArea.rawValue] == nil,
+                    bindingsByAction: bindings
+                )
             default:
                 throw ShortcutStoreError.invalidConfig(
                     "shortcuts.json has version \(version), but this build expects version 1 or 2."
@@ -435,9 +440,17 @@ struct ShortcutConfigCodec {
         _ actions: [String: [T]],
         transform: (T) throws -> ShortcutBinding
     ) throws -> [ShortcutAction: [ShortcutBinding]] {
-        try ShortcutAction.allCases.reduce(into: [ShortcutAction: [ShortcutBinding]]()) { result, action in
+        var result = try ShortcutAction.allCases.reduce(into: [ShortcutAction: [ShortcutBinding]]()) { result, action in
             result[action] = try (actions[action.rawValue] ?? []).map(transform)
         }
+        if actions[ShortcutAction.readScreenArea.rawValue] == nil {
+            let used = Set(result.values.flatMap { $0 }.filter(\.enabled).map(\.shortcut))
+            // Existing shortcuts win; the first remaining default must be usable in Settings.
+            result[.readScreenArea] = ShortcutAction.readScreenArea.defaultBindings.filter {
+                !used.contains($0.shortcut)
+            }
+        }
+        return result
     }
 
     private static func normalizedDescription(_ description: String?) -> String? {

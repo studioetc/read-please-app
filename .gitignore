@@ -12,3 +12,10 @@ ReadPlease.app/
 ReadPlease-Staging.app/
 diff.txt
 log.txt
+*.har
+
+# Vendored sherpa-onnx runtime (feature/local-voice-engines) — fetched via
+# scripts/fetch-sherpa-runtime.sh, never checked in.
+/Vendor/
+/Sources/CSherpaOnnx/include/sherpa-onnx/
+/Sources/SherpaOnnxRuntime/SherpaOnnx.swift

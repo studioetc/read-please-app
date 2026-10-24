@@ -4,187 +4,156 @@ import XCTest
 
 @MainActor
 final class AudioInterruptionPlaybackTests: XCTestCase {
-    func testMuteLifecycleFollowsPlayPauseResumeAndFinish() {
+    func testMuteLifecycleFollowsPlayPauseResumeAndFinish() async {
         let engine = InterruptionRecordingTTSEngine()
         let muter = RecordingAudioMuter()
-        let manager = makeManager(
-            engine: engine,
-            muter: muter,
-            mode: { .muteChromeWhileSpeaking }
-        )
-
+        let manager = makeManager(engine: engine, muter: muter, mode: { .muteChromeWhileSpeaking })
         manager.play(text: "First selection")
+        await waitUntil { muter.startedModes.count == 1 }
         manager.play(text: "Replacement selection")
+        await Task.yield()
         XCTAssertEqual(muter.startedModes, [.muteChromeWhileSpeaking])
         XCTAssertEqual(muter.stopCallCount, 0)
-
         manager.pause()
         XCTAssertEqual(muter.stopCallCount, 1)
-
         manager.resume()
-        XCTAssertEqual(
-            muter.startedModes,
-            [.muteChromeWhileSpeaking, .muteChromeWhileSpeaking]
-        )
-
+        await waitUntil { muter.startedModes.count == 2 }
         engine.finish()
         XCTAssertEqual(muter.stopCallCount, 2)
     }
 
-    func testOffModeDoesNotTouchAudioMuter() {
+    func testOffModeDoesNotTouchAudioMuter() async {
         let engine = InterruptionRecordingTTSEngine()
         let muter = RecordingAudioMuter()
         let manager = makeManager(engine: engine, muter: muter, mode: { .off })
-
         manager.play(text: "Selection")
         manager.pause()
         manager.resume()
         manager.stop()
-
+        await Task.yield()
         XCTAssertTrue(muter.startedModes.isEmpty)
         XCTAssertEqual(muter.stopCallCount, 0)
     }
 
-    func testModeChangeWhilePlayingStopsOldModeAndStartsNewMode() {
+    func testModeChangeWhilePlayingStopsOldModeAndStartsNewMode() async {
         let engine = InterruptionRecordingTTSEngine()
         let muter = RecordingAudioMuter()
         let mode = AudioInterruptionModeBox(.muteChromeWhileSpeaking)
         let manager = makeManager(engine: engine, muter: muter, mode: { mode.value })
-
         manager.play(text: "Selection")
+        await waitUntil { muter.startedModes.count == 1 }
         mode.value = .muteAllOtherAudioWhileSpeaking
         manager.audioInterruptionModeDidChange()
-
-        XCTAssertEqual(
-            muter.startedModes,
-            [.muteChromeWhileSpeaking, .muteAllOtherAudioWhileSpeaking]
-        )
+        await waitUntil { muter.startedModes.count == 2 }
+        XCTAssertEqual(muter.startedModes, [.muteChromeWhileSpeaking, .muteAllOtherAudioWhileSpeaking])
         XCTAssertEqual(muter.stopCallCount, 1)
+        manager.stop()
     }
 
     func testStopCancelsPendingGlobalMuteRetry() async {
-        let engine = InterruptionRecordingTTSEngine()
-        let muter = RecordingAudioMuter(startResults: [false, false, true])
-        let manager = makeManager(
-            engine: engine,
-            muter: muter,
-            mode: { .muteAllOtherAudioWhileSpeaking },
-            retryDelay: .milliseconds(10)
-        )
-
+        let muter = RecordingAudioMuter(startResults: [false, true])
+        let manager = makeManager(engine: InterruptionRecordingTTSEngine(), muter: muter,
+                                  mode: { .muteAllOtherAudioWhileSpeaking }, retryDelay: .seconds(1))
         manager.play(text: "Selection")
-        XCTAssertEqual(muter.startedModes.count, 2)
-
+        await waitUntil { muter.startedModes.count == 1 }
         manager.stop()
-        try? await Task.sleep(for: .milliseconds(30))
-
-        XCTAssertEqual(muter.startedModes.count, 2)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(muter.startedModes.count, 1)
         XCTAssertEqual(muter.stopCallCount, 1)
     }
 
-    func testGlobalMuteRetriesOnceAfterSpeechStarts() async {
-        let engine = InterruptionRecordingTTSEngine()
-        let muter = RecordingAudioMuter(startResults: [false, false, true])
-        let retryStarted = expectation(description: "Global mute retry started")
-        muter.onStart = { count in
-            if count == 3 { retryStarted.fulfill() }
+    func testMuteRetriesOnceAfterSpeechStartsForBothModes() async {
+        for mode in [AudioInterruptionMode.muteAllOtherAudioWhileSpeaking, .muteChromeWhileSpeaking] {
+            let muter = RecordingAudioMuter(startResults: [false, true])
+            let manager = makeManager(engine: InterruptionRecordingTTSEngine(), muter: muter,
+                                      mode: { mode }, retryDelay: .milliseconds(1))
+            manager.play(text: "Selection")
+            await waitUntil { muter.startedModes.count == 2 }
+            XCTAssertEqual(muter.startedModes, [mode, mode])
+            manager.stop()
         }
-        let manager = makeManager(
-            engine: engine,
-            muter: muter,
-            mode: { .muteAllOtherAudioWhileSpeaking },
-            retryDelay: .milliseconds(1)
-        )
-
-        manager.play(text: "Selection")
-        await fulfillment(of: [retryStarted], timeout: 1)
-
-        XCTAssertEqual(
-            muter.startedModes,
-            [
-                .muteAllOtherAudioWhileSpeaking,
-                .muteAllOtherAudioWhileSpeaking,
-                .muteAllOtherAudioWhileSpeaking,
-            ]
-        )
-    }
-
-    func testChromeMuteRetriesOnceAfterSpeechStarts() async {
-        let engine = InterruptionRecordingTTSEngine()
-        let muter = RecordingAudioMuter(startResults: [false, false, true])
-        let retryStarted = expectation(description: "Chrome mute retry started")
-        muter.onStart = { count in
-            if count == 3 { retryStarted.fulfill() }
-        }
-        let manager = makeManager(
-            engine: engine,
-            muter: muter,
-            mode: { .muteChromeWhileSpeaking },
-            retryDelay: .milliseconds(1)
-        )
-
-        manager.play(text: "Selection")
-        await fulfillment(of: [retryStarted], timeout: 1)
-
-        XCTAssertEqual(
-            muter.startedModes,
-            [
-                .muteChromeWhileSpeaking,
-                .muteChromeWhileSpeaking,
-                .muteChromeWhileSpeaking,
-            ]
-        )
     }
 
     func testFailedChromeMuteShowsStatusAndIsCleanedUpOnStop() async {
-        let engine = InterruptionRecordingTTSEngine()
-        let muter = RecordingAudioMuter(startResults: [false, false, false])
-        let retryFinished = expectation(description: "Chrome mute retry finished")
-        muter.onStart = { count in
-            if count == 3 { retryFinished.fulfill() }
-        }
-        let manager = makeManager(
-            engine: engine,
-            muter: muter,
-            mode: { .muteChromeWhileSpeaking },
-            retryDelay: .milliseconds(1)
-        )
-
+        let muter = RecordingAudioMuter(startResults: [false, false])
+        let manager = makeManager(engine: InterruptionRecordingTTSEngine(), muter: muter,
+                                  mode: { .muteChromeWhileSpeaking }, retryDelay: .milliseconds(1))
         manager.play(text: "Selection")
-        await fulfillment(of: [retryFinished], timeout: 1)
-        await Task.yield()
-
-        XCTAssertEqual(
-            manager.statusMessage,
-            "Reading started, but Chrome audio couldn't be muted."
-        )
-
+        await waitUntil { manager.statusMessage != nil }
+        XCTAssertEqual(manager.statusMessage, "Reading started, but Chrome audio couldn't be muted.")
+        XCTAssertEqual(muter.startedModes.count, 2)
         manager.stop()
         XCTAssertEqual(muter.stopCallCount, 1)
     }
 
-    private func makeManager(
-        engine: InterruptionRecordingTTSEngine,
-        muter: RecordingAudioMuter,
-        mode: @escaping @MainActor () -> AudioInterruptionMode,
-        retryDelay: Duration = .milliseconds(150)
-    ) -> PlaybackManager {
-        PlaybackManager(
-            engine: engine,
-            audioMuteController: muter,
-            audioInterruptionMode: mode,
-            audioMuteRetryDelay: retryDelay
-        )
+    func testImmediateStopDoesNotSubmitALateMuteStart() async {
+        let muter = RecordingAudioMuter()
+        let manager = makeManager(engine: InterruptionRecordingTTSEngine(), muter: muter,
+                                  mode: { .muteAllOtherAudioWhileSpeaking })
+        manager.play(text: "Selection")
+        manager.stop()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(muter.startedModes.isEmpty)
+        XCTAssertEqual(muter.stopCallCount, 1)
+    }
+
+    func testSlowMuteDoesNotDelaySpeechOrStopAndLateResultIsIgnored() async {
+        let engine = InterruptionRecordingTTSEngine()
+        let muter = RecordingAudioMuter()
+        muter.suspendStart = true
+        let manager = makeManager(engine: engine, muter: muter, mode: { .muteAllOtherAudioWhileSpeaking })
+        manager.play(text: "Selection")
+        XCTAssertEqual(engine.state, .playing)
+        await waitUntil { muter.pendingStart != nil }
+        manager.stop()
+        XCTAssertEqual(engine.state, .stopped)
+        XCTAssertEqual(muter.stopCallCount, 1)
+        muter.completeStart(false)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(engine.state, .stopped)
+        XCTAssertNil(manager.statusMessage)
+        XCTAssertEqual(muter.startedModes.count, 1)
+    }
+
+    func testReplacementKeepsPendingMuteAndStopThenPlayStartsFreshSession() async {
+        let engine = InterruptionRecordingTTSEngine()
+        let muter = RecordingAudioMuter()
+        muter.suspendStart = true
+        let manager = makeManager(engine: engine, muter: muter, mode: { .muteChromeWhileSpeaking })
+        manager.play(text: "First")
+        await waitUntil { muter.pendingStart != nil }
+        manager.play(text: "Replacement")
+        XCTAssertEqual(muter.startedModes.count, 1)
+        manager.stop()
+        muter.suspendStart = false
+        manager.play(text: "Fresh session")
+        await waitUntil { muter.startedModes.count == 2 }
+        muter.completeStart(false)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(engine.state, .playing)
+        XCTAssertNil(manager.statusMessage)
+        XCTAssertEqual(muter.startedModes.count, 2)
+        manager.stop()
+    }
+
+    private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !condition(), ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(condition(), file: file, line: line)
+    }
+
+    private func makeManager(engine: InterruptionRecordingTTSEngine, muter: RecordingAudioMuter,
+                             mode: @escaping @MainActor () -> AudioInterruptionMode,
+                             retryDelay: Duration = .milliseconds(150)) -> PlaybackManager {
+        PlaybackManager(engine: engine, audioMuteController: muter, audioInterruptionMode: mode,
+                        audioMuteRetryDelay: retryDelay)
     }
 }
 
 @MainActor
 private final class AudioInterruptionModeBox {
     var value: AudioInterruptionMode
-
-    init(_ value: AudioInterruptionMode) {
-        self.value = value
-    }
+    init(_ value: AudioInterruptionMode) { self.value = value }
 }
 
 @MainActor
@@ -192,21 +161,20 @@ private final class RecordingAudioMuter: AudioMuting {
     private var startResults: [Bool]
     private(set) var startedModes: [AudioInterruptionMode] = []
     private(set) var stopCallCount = 0
-    var onStart: ((Int) -> Void)?
-
-    init(startResults: [Bool] = []) {
-        self.startResults = startResults
-    }
-
-    func start(mode: AudioInterruptionMode) -> Bool {
+    var suspendStart = false
+    var pendingStart: CheckedContinuation<Bool, Never>?
+    init(startResults: [Bool] = []) { self.startResults = startResults }
+    func start(mode: AudioInterruptionMode) async -> Bool {
         startedModes.append(mode)
-        onStart?(startedModes.count)
+        if suspendStart { return await withCheckedContinuation { pendingStart = $0 } }
         return startResults.isEmpty ? true : startResults.removeFirst()
     }
-
-    func stop() {
-        stopCallCount += 1
+    func completeStart(_ result: Bool) {
+        let continuation = pendingStart
+        pendingStart = nil
+        continuation?.resume(returning: result)
     }
+    func stop() { stopCallCount += 1 }
 }
 
 @MainActor
@@ -220,24 +188,9 @@ private final class InterruptionRecordingTTSEngine: TTSEngine {
         }
     }
     var onStateChange: ((TTSEngineState) -> Void)?
-
-    func speak(text: String, options: SpeechOptions) {
-        state = .playing
-    }
-
-    func stop() {
-        state = .stopped
-    }
-
-    func pause() {
-        state = .paused
-    }
-
-    func resume() {
-        state = .playing
-    }
-
-    func finish() {
-        state = .stopped
-    }
+    func speak(text: String, options: SpeechOptions) { state = .playing }
+    func stop() { state = .stopped }
+    func pause() { state = .paused }
+    func resume() { state = .playing }
+    func finish() { state = .stopped }
 }

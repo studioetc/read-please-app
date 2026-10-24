@@ -41,6 +41,9 @@ public class PlaybackManager {
     private let audioMuteRetryDelay: Duration
     private var activeEngine: TTSEngine
     private var activeAudioInterruptionMode: AudioInterruptionMode?
+    private var audioMuteGeneration: UInt = 0
+    private var audioMuteStartTask: Task<Void, Never>?
+    private var pendingAudioInterruptionMode: AudioInterruptionMode?
     private var audioMuteRetryTask: Task<Void, Never>?
     private var audioMuteStartWasAttempted = false
 
@@ -152,7 +155,7 @@ public class PlaybackManager {
         state = newState
         switch newState {
         case .playing:
-            startAudioInterruptionIfNeeded(for: actionRevision)
+            startAudioInterruptionIfNeeded()
         case .paused, .stopped:
             endAudioInterruption()
         }
@@ -195,6 +198,7 @@ public class PlaybackManager {
                 setStatusMessage("Couldn't read selected text here. Try F14 in the source app.")
                 return
             }
+            ScreenAreaTiming.selectionText(text)
             play(text: text)
         }
     }
@@ -216,11 +220,13 @@ public class PlaybackManager {
                 setStatusMessage("No selected text found.")
                 return
             }
+            ScreenAreaTiming.selectionText(selectedText)
             play(text: selectedText)
             return
         }
 
         if hasSelection, let selectedText, selectedText != currentText {
+            ScreenAreaTiming.selectionText(selectedText)
             play(text: selectedText)
             return
         }
@@ -253,8 +259,10 @@ public class PlaybackManager {
         print(
             "PlaybackManager: Calling engine.speak with rate=\(currentRate) voice=\(currentVoiceId ?? "nil")"
         )
-        startAudioInterruptionIfNeeded(for: actionRevision)
+        startAudioInterruptionIfNeeded()
+        ScreenAreaTiming.current?.event("playback_requested", detail: "owner=PlaybackManager chars=\(trimmedText.count)")
         activeEngine.speak(text: trimmedText, options: options)
+        ScreenAreaTiming.current?.event("playback_command_returned")
     }
 
     @MainActor
@@ -284,50 +292,55 @@ public class PlaybackManager {
     func audioInterruptionModeDidChange() {
         endAudioInterruption()
         if state == .playing {
-            startAudioInterruptionIfNeeded(for: actionRevision)
+            startAudioInterruptionIfNeeded()
         }
     }
 
-    private func startAudioInterruptionIfNeeded(for playbackRevision: UInt) {
+    private func startAudioInterruptionIfNeeded() {
         let mode = audioInterruptionMode()
         guard mode != .off else {
             endAudioInterruption()
             return
         }
-        guard activeAudioInterruptionMode != mode else { return }
+        guard activeAudioInterruptionMode != mode, pendingAudioInterruptionMode != mode else { return }
 
         audioMuteRetryTask?.cancel()
         audioMuteRetryTask = nil
-
+        audioMuteStartTask?.cancel()
+        pendingAudioInterruptionMode = mode
         audioMuteStartWasAttempted = true
-        if audioMuteController.start(mode: mode) {
-            activeAudioInterruptionMode = mode
-            return
-        }
-
-        audioMuteRetryTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await Task.sleep(for: self.audioMuteRetryDelay)
-            } catch {
+        let generation = audioMuteGeneration
+        audioMuteStartTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            let started = await self.audioMuteController.start(mode: mode)
+            guard !Task.isCancelled, self.audioMuteGeneration == generation,
+                  self.state == .playing, self.audioInterruptionMode() == mode else { return }
+            self.pendingAudioInterruptionMode = nil
+            self.audioMuteStartTask = nil
+            if started {
+                self.activeAudioInterruptionMode = mode
                 return
             }
-
-            guard
-                self.actionRevision == playbackRevision,
-                self.state == .playing,
-                self.audioInterruptionMode() == mode
-            else { return }
-
-            if self.audioMuteController.start(mode: mode) {
-                self.activeAudioInterruptionMode = mode
-            } else {
-                self.setStatusMessage(self.audioInterruptionFailureMessage(for: mode))
+            self.audioMuteRetryTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                do { try await Task.sleep(for: self.audioMuteRetryDelay) }
+                catch { return }
+                guard !Task.isCancelled, self.audioMuteGeneration == generation,
+                      self.state == .playing, self.audioInterruptionMode() == mode else { return }
+                let retried = await self.audioMuteController.start(mode: mode)
+                guard !Task.isCancelled, self.audioMuteGeneration == generation,
+                      self.state == .playing, self.audioInterruptionMode() == mode else { return }
+                if retried { self.activeAudioInterruptionMode = mode }
+                else { self.setStatusMessage(self.audioInterruptionFailureMessage(for: mode)) }
             }
         }
     }
 
     private func endAudioInterruption() {
+        audioMuteGeneration &+= 1
+        audioMuteStartTask?.cancel()
+        audioMuteStartTask = nil
+        pendingAudioInterruptionMode = nil
         audioMuteRetryTask?.cancel()
         audioMuteRetryTask = nil
 

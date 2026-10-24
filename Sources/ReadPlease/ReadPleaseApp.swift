@@ -49,7 +49,7 @@ struct ReadPleaseApp: App {
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
-    private let shortcutActionCoordinator = ShortcutActionCoordinator()
+    private let shortcutActionCoordinator = ShortcutActionCoordinator.shared
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupApp()
@@ -61,17 +61,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        PlaybackManager.shared.stop()
+        shortcutActionCoordinator.handle(.stop)
     }
 
     @MainActor
     private func setupApp() {
         print("ReadPlease: App Initializing (AppDelegate)...")
 
+        shortcutActionCoordinator.screenAreaReader.captureBackend = NativeScreenCaptureBackend()
+
         ShortcutManager.shared.onAction = { [weak self] action in
-            self?.shortcutActionCoordinator.handle(action)
+            self?.shortcutActionCoordinator.handle(action, source: "hotkey")
         }
         ShortcutStore.shared.reloadFromDiskIfNeeded()
+        Task(priority: .utility) { await TextRecognizer.warmUp() }
 
         // Check permissions WITHOUT prompting — the onboarding Permissions step is the only place
         // that should surface a permission request. Prompting here pops the system dialog over the

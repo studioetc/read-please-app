@@ -6,7 +6,7 @@ import Foundation
 @MainActor
 protocol AudioMuting: AnyObject {
     @discardableResult
-    func start(mode: AudioInterruptionMode) -> Bool
+    func start(mode: AudioInterruptionMode) async -> Bool
     func stop()
 }
 
@@ -14,6 +14,39 @@ protocol AudioMuting: AnyObject {
 final class AudioMuteController: AudioMuting {
     static let shared = AudioMuteController()
 
+    private let worker = CoreAudioMuteWorker()
+    // Queue complete operations, including teardown, in submission order. Stop/new Play cannot
+    // overtake a slow Core Audio permission/device request or leave a late tap muting other apps.
+    private var pendingOperation: Task<Bool, Never>?
+
+    private init() {}
+
+    func start(mode: AudioInterruptionMode) async -> Bool {
+        let previous = pendingOperation
+        let runningChromePIDs = Set(NSWorkspace.shared.runningApplications
+            .filter { $0.bundleIdentifier == "com.google.Chrome" }.map(\.processIdentifier))
+        let worker = worker
+        let operation = Task {
+            _ = await previous?.value
+            return await worker.start(mode: mode, runningChromePIDs: runningChromePIDs)
+        }
+        pendingOperation = operation
+        return await operation.value
+    }
+
+    func stop() {
+        let previous = pendingOperation
+        let worker = worker
+        pendingOperation = Task {
+            _ = await previous?.value
+            await worker.stop()
+            return false
+        }
+    }
+}
+
+/// All blocking HAL and TCC IPC stays on this serial worker, never the UI/speech path.
+private actor CoreAudioMuteWorker {
     private let chromeBundleID = "com.google.Chrome"
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateDeviceID = AudioObjectID(kAudioObjectUnknown)
@@ -21,10 +54,8 @@ final class AudioMuteController: AudioMuting {
     private var isRunning = false
     private var activeMode: AudioInterruptionMode?
 
-    private init() {}
-
     @discardableResult
-    func start(mode: AudioInterruptionMode) -> Bool {
+    func start(mode: AudioInterruptionMode, runningChromePIDs: Set<pid_t>) -> Bool {
         if mode == .off {
             stop()
             return false
@@ -39,6 +70,10 @@ final class AudioMuteController: AudioMuting {
             }
         }
 
+        let timing = ScreenAreaTiming.current
+        let started = ContinuousClock.now
+        timing?.event("audio_mute_setup_started", detail: "mode=\(mode.rawValue)")
+        defer { timing?.event("audio_mute_setup_done", since: started) }
         do {
             let tapDescription: CATapDescription
             let scopeDescription: String
@@ -47,7 +82,7 @@ final class AudioMuteController: AudioMuting {
             case .off:
                 preconditionFailure("The off mode is handled before tap creation")
             case .muteChromeWhileSpeaking:
-                let chromeProcesses = try findChromeAudioProcesses()
+                let chromeProcesses = try findChromeAudioProcesses(runningChromePIDs: runningChromePIDs)
                 guard !chromeProcesses.isEmpty else {
                     print("AudioMuteController: No Chrome audio processes found")
                     return false
@@ -130,13 +165,7 @@ final class AudioMuteController: AudioMuting {
             || tapID != kAudioObjectUnknown
     }
 
-    private func findChromeAudioProcesses() throws -> [AudioObjectID] {
-        let runningChromePIDs = Set(
-            NSWorkspace.shared.runningApplications
-                .filter { $0.bundleIdentifier == chromeBundleID }
-                .map(\.processIdentifier)
-        )
-
+    private func findChromeAudioProcesses(runningChromePIDs: Set<pid_t>) throws -> [AudioObjectID] {
         return try AudioObjectID.readProcessList().filter { processID in
             let bundleID = (try? processID.readProcessBundleID()) as String?
             if let bundleID,
@@ -225,6 +254,9 @@ final class AudioMuteController: AudioMuting {
         ioProcID = newIOProcID
 
         if let newIOProcID {
+            let startTime = ContinuousClock.now
+            ScreenAreaTiming.current?.event("audio_device_start_requested")
+            defer { ScreenAreaTiming.current?.event("audio_device_start_returned", since: startTime) }
             try checkOSStatus(AudioDeviceStart(aggregateDeviceID, newIOProcID), "AudioDeviceStart")
         }
     }

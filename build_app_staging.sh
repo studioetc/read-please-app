@@ -17,6 +17,15 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Copy Binary
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
 
+# Copy SwiftPM resource bundles (e.g. KeyboardShortcuts) so Bundle.module resolves in the
+# packaged app; without them Settings crashes when it creates a shortcut recorder.
+for bundle in "$BUILD_DIR"/*.bundle; do
+  [ -e "$bundle" ] && cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/"
+done
+
+# Include the MIT/BSD notices with redistributed binaries.
+cp "THIRD_PARTY_NOTICES.md" "$APP_BUNDLE/Contents/Resources/"
+
 # Copy Info.plist
 cp "Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 

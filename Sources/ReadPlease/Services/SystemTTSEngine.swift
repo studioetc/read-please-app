@@ -7,6 +7,7 @@ public class SystemTTSEngine: NSObject, TTSEngine, @preconcurrency AVSpeechSynth
     private let synthesizer = AVSpeechSynthesizer()
     private let pronunciationStore = PronunciationStore.shared
     private var pronunciationRules: PronunciationRuleSet { pronunciationStore.ruleSet }
+    private var screenAreaTiming: ScreenAreaTiming?
     private var activeUtterance: AVSpeechUtterance?
     public var onStateChange: ((TTSEngineState) -> Void)?
     public private(set) var state: TTSEngineState = .stopped {
@@ -45,9 +46,10 @@ public class SystemTTSEngine: NSObject, TTSEngine, @preconcurrency AVSpeechSynth
 
     public func speak(text: String, options: SpeechOptions) {
         print(
-            "SystemTTSEngine: Speaking '\(text.prefix(50))...' rate=\(options.rate) voice=\(options.voiceId ?? "default")"
+            "SystemTTSEngine: Speaking \(text.count) characters rate=\(options.rate) voice=\(options.voiceId ?? "default")"
         )
 
+        screenAreaTiming = ScreenAreaTiming.current
         let utterance = makeUtterance(for: text)
 
         // Map rate: Our UI uses 0.5x-2.0x. AVSpeechUtterance uses 0.0-1.0 where ~0.5 is normal.
@@ -140,6 +142,7 @@ public class SystemTTSEngine: NSObject, TTSEngine, @preconcurrency AVSpeechSynth
 
     public func stop() {
         activeUtterance = nil
+        screenAreaTiming = nil
         synthesizer.stopSpeaking(at: .immediate)
         state = .stopped
     }
@@ -161,6 +164,7 @@ public class SystemTTSEngine: NSObject, TTSEngine, @preconcurrency AVSpeechSynth
         _ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance
     ) {
         guard utterance === activeUtterance else { return }
+        screenAreaTiming?.event("playback_started", detail: "callback=AVSpeechSynthesizer.didStart")
         state = .playing
     }
 

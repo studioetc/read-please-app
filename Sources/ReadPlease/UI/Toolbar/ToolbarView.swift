@@ -1,11 +1,17 @@
 import SwiftUI
 
 struct ToolbarView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.openWindow) private var openWindow
     let playbackManager: PlaybackManager
+    let actionCoordinator: ShortcutActionCoordinator
 
-    init(playbackManager: PlaybackManager = .shared) {
+    init(
+        playbackManager: PlaybackManager = .shared,
+        actionCoordinator: ShortcutActionCoordinator = .shared
+    ) {
         self.playbackManager = playbackManager
+        self.actionCoordinator = actionCoordinator
     }
 
     var body: some View {
@@ -18,10 +24,26 @@ struct ToolbarView: View {
                 }
                 .frame(width: 192)
 
+                Button("Read Screen Area", systemImage: "viewfinder") {
+                    dismiss()
+                    actionCoordinator.handle(.readScreenArea)
+                }
+                .disabled(actionCoordinator.isReadingScreenArea)
+                .help("Select a screen area to read aloud")
+                .padding(.vertical, 8)
+
+                if actionCoordinator.screenAreaOutcome == .permissionNeeded {
+                    Button("Open Screen Recording Settings") {
+                        ScreenRecordingPermission.openSettings()
+                    }
+                    .padding(.bottom, 8)
+                }
+
                 Text(statusLine)
                     .font(.footnote)
                     .foregroundStyle(
-                        playbackManager.statusMessage == nil ? Color.secondary : Color.orange
+                        playbackManager.statusMessage == nil && actionCoordinator.screenAreaOutcome == nil
+                            ? Color.secondary : Color.orange
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -36,7 +58,7 @@ struct ToolbarView: View {
     private var transportControls: some View {
         ControlGroup {
             Button(action: {
-                playbackManager.handleMenuBarPrimaryAction()
+                actionCoordinator.handleMenuBarPrimaryAction()
             }) {
                 Label(primaryActionLabel, systemImage: primaryActionSymbolName)
             }
@@ -44,12 +66,12 @@ struct ToolbarView: View {
             .help(primaryActionHelp)
 
             Button(action: {
-                playbackManager.stop()
+                actionCoordinator.handle(.stop)
             }) {
                 Label("Stop", systemImage: "stop.fill")
             }
             .accessibilityLabel("Stop")
-            .disabled(playbackManager.state == .stopped)
+            .disabled(playbackManager.state == .stopped && !actionCoordinator.isReadingScreenArea)
             .help("Stop playback")
 
             Button(action: {
@@ -98,6 +120,12 @@ struct ToolbarView: View {
     }
 
     private var statusLine: String {
+        if actionCoordinator.isReadingScreenArea {
+            return "Reading screen area…"
+        }
+        if let outcome = actionCoordinator.screenAreaOutcome {
+            return outcome.message
+        }
         if let statusMessage = playbackManager.statusMessage {
             return statusMessage
         }
