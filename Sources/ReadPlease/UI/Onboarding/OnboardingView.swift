@@ -35,7 +35,7 @@ struct OnboardingView: View {
         .frame(width: 520)
         .background(backgroundGradient)
         .onAppear {
-            // Already running (e.g. a #Preview that pinned a step) — don't reset to Welcome.
+            // Already running (e.g. a preview that pinned a step) — don't reset to Welcome.
             guard !coordinator.isActive else { return }
             if coordinator.hasCompletedOnboarding {
                 dismiss()
@@ -312,9 +312,14 @@ private struct ShortcutKeysView: View {
 }
 
 #if DEBUG
-#Preview("Welcome") { OnboardingView(coordinator: .preview(.welcome)) }
-#Preview("Permissions") { OnboardingView(coordinator: .preview(.permissions)) }
-#Preview("Shortcut") { OnboardingView(coordinator: .preview(.shortcut)) }
-#Preview("Voice") { OnboardingView(coordinator: .preview(.voice)) }
-#Preview("Done") { OnboardingView(coordinator: .preview(.done)) }
+// `PreviewProvider` rather than `#Preview`: the macro needs Xcode's PreviewsMacros plugin,
+// which would break builds with the Command Line Tools alone.
+struct OnboardingView_Previews: PreviewProvider {
+    static var previews: some View {
+        ForEach(OnboardingCoordinator.Step.allCases, id: \.self) { step in
+            OnboardingView(coordinator: .preview(step))
+                .previewDisplayName(String(describing: step).capitalized)
+        }
+    }
+}
 #endif

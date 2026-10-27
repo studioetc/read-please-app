@@ -18,7 +18,7 @@ final class OnboardingCoordinator {
     }
 
     #if DEBUG
-    /// A non-singleton instance pinned to a step, for `#Preview` use only.
+    /// A non-singleton instance pinned to a step, for SwiftUI previews only.
     static func preview(_ step: Step) -> OnboardingCoordinator {
         let coordinator = OnboardingCoordinator()
         coordinator.isActive = true

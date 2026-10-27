@@ -1,10 +1,10 @@
 import Foundation
-import XCTest
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class ShortcutActionCoordinatorTests: XCTestCase {
-    func testStopInvalidatesPendingSelectionBeforeItCanStartPlayback() async {
+@Suite final class ShortcutActionCoordinatorTests {
+    @Test func testStopInvalidatesPendingSelectionBeforeItCanStartPlayback() async {
         let engine = CoordinatorRecordingTTSEngine()
         let manager = PlaybackManager(engine: engine)
         let selection = ControlledSelectionProvider()
@@ -20,11 +20,11 @@ final class ShortcutActionCoordinatorTests: XCTestCase {
         selection.resolve(with: "Selection that arrived too late")
         await drainTasks()
 
-        XCTAssertEqual(engine.stopCallCount, 1)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
+        #expect(engine.stopCallCount == 1)
+        #expect(engine.spokenTexts.isEmpty)
     }
 
-    func testDuplicatePlayPauseIsIgnoredWhileSelectionIsPending() async {
+    @Test func testDuplicatePlayPauseIsIgnoredWhileSelectionIsPending() async {
         let engine = CoordinatorRecordingTTSEngine()
         let manager = PlaybackManager(engine: engine)
         let selection = ControlledSelectionProvider()
@@ -37,15 +37,15 @@ final class ShortcutActionCoordinatorTests: XCTestCase {
         await waitUntil { selection.callCount == 1 }
         coordinator.handle(.playPause)
 
-        XCTAssertEqual(selection.callCount, 1)
+        #expect(selection.callCount == 1)
 
         selection.resolve(with: "Current selection")
         await waitUntil { engine.spokenTexts.count == 1 }
 
-        XCTAssertEqual(engine.spokenTexts, ["Current selection"])
+        #expect(engine.spokenTexts == (["Current selection"]))
     }
 
-    func testDirectPlaybackActionInvalidatesPendingSelection() async {
+    @Test func testDirectPlaybackActionInvalidatesPendingSelection() async {
         let engine = CoordinatorRecordingTTSEngine()
         let manager = PlaybackManager(engine: engine)
         let selection = ControlledSelectionProvider()
@@ -61,11 +61,11 @@ final class ShortcutActionCoordinatorTests: XCTestCase {
         selection.resolve(with: "Selection after toolbar stop")
         await drainTasks()
 
-        XCTAssertEqual(engine.stopCallCount, 1)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
+        #expect(engine.stopCallCount == 1)
+        #expect(engine.spokenTexts.isEmpty)
     }
 
-    func testPlayImmediatelyAfterStopStartsANewSelectionRequest() async {
+    @Test func testPlayImmediatelyAfterStopStartsANewSelectionRequest() async {
         let engine = CoordinatorRecordingTTSEngine()
         let manager = PlaybackManager(engine: engine)
         let selection = ControlledSelectionProvider()
@@ -87,19 +87,18 @@ final class ShortcutActionCoordinatorTests: XCTestCase {
         selection.resolve(at: 0, with: "Cancelled selection")
         await drainTasks()
 
-        XCTAssertEqual(engine.spokenTexts, ["Selection after stop"])
+        #expect(engine.spokenTexts == (["Selection after stop"]))
     }
 
     private func waitUntil(
         _ condition: @MainActor () -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async {
         for _ in 0..<100 {
             if condition() { return }
             await Task.yield()
         }
-        XCTFail("Condition was not met", file: file, line: line)
+        Issue.record("Condition was not met", sourceLocation: sourceLocation)
     }
 
     private func drainTasks() async {

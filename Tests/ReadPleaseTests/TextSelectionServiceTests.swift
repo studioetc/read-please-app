@@ -1,41 +1,35 @@
 import AppKit
-import XCTest
+import Foundation
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class TextSelectionServiceTests: XCTestCase {
-    func testClipboardTextRequiresOwnershipChange() {
-        XCTAssertNil(
-            TextSelectionService.validatedClipboardText(
+@Suite final class TextSelectionServiceTests {
+    @Test func testClipboardTextRequiresOwnershipChange() {
+        #expect(TextSelectionService.validatedClipboardText(
                 changeCount: 10,
                 captureChangeCount: 10,
                 text: "Old clipboard contents"
-            )
-        )
+            ) == nil)
     }
 
-    func testClipboardCaptureMarkerIsNotExposedAsPasteableText() {
+    @Test func testClipboardCaptureMarkerIsNotExposedAsPasteableText() {
         let pasteboard = NSPasteboard(name: .init("ReadPleaseTests.\(UUID().uuidString)"))
         defer { pasteboard.clearContents() }
 
         TextSelectionService.prepareClipboardForCapture(pasteboard)
 
-        XCTAssertNil(pasteboard.string(forType: .string))
-        XCTAssertNotNil(
-            pasteboard.data(
+        #expect(pasteboard.string(forType: .string) == nil)
+        #expect((pasteboard.data(
                 forType: .init("org.nspasteboard.TransientType")
-            )
-        )
+            )) != nil)
     }
 
-    func testChangedClipboardTextIsAccepted() {
-        XCTAssertEqual(
-            TextSelectionService.validatedClipboardText(
+    @Test func testChangedClipboardTextIsAccepted() {
+        #expect(TextSelectionService.validatedClipboardText(
                 changeCount: 11,
                 captureChangeCount: 10,
                 text: "Current selection"
-            ),
-            "Current selection"
-        )
+            ) == "Current selection")
     }
 }

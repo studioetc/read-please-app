@@ -1,10 +1,10 @@
 import Foundation
-import XCTest
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class PlaybackManagerTests: XCTestCase {
-    func testReplacingTextDoesNotIssueSeparateStopBeforeSpeak() async {
+@Suite final class PlaybackManagerTests {
+    @Test func testReplacingTextDoesNotIssueSeparateStopBeforeSpeak() async {
         let engine = RecordingTTSEngine()
         let manager = PlaybackManager(engine: engine)
 
@@ -12,12 +12,12 @@ final class PlaybackManagerTests: XCTestCase {
         await Task.yield()
         manager.play(text: "Second selection")
 
-        XCTAssertEqual(engine.spokenTexts, ["First selection", "Second selection"])
-        XCTAssertEqual(engine.stopCallCount, 0)
-        XCTAssertEqual(manager.currentText, "Second selection")
+        #expect(engine.spokenTexts == (["First selection", "Second selection"]))
+        #expect(engine.stopCallCount == 0)
+        #expect(manager.currentText == "Second selection")
     }
 
-    func testShortcutWithCurrentSelectionTogglesPauseAndResume() async {
+    @Test func testShortcutWithCurrentSelectionTogglesPauseAndResume() async {
         let engine = RecordingTTSEngine()
         let manager = PlaybackManager(engine: engine)
 
@@ -26,10 +26,10 @@ final class PlaybackManagerTests: XCTestCase {
 
         manager.handleShortcutPlayPause(selectedText: "Current selection")
         await Task.yield()
-        XCTAssertEqual(engine.pauseCallCount, 1)
+        #expect(engine.pauseCallCount == 1)
 
         manager.handleShortcutPlayPause(selectedText: "Current selection")
-        XCTAssertEqual(engine.resumeCallCount, 1)
+        #expect(engine.resumeCallCount == 1)
     }
 }
 

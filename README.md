@@ -62,10 +62,10 @@ If something doesn't work or you have an idea, please [open an issue](https://gi
 
 ## Build from source
 
-Read Please is built with Swift 6 and SwiftUI using Swift Package Manager (no Xcode project required).
+Read Please is built with Swift 6 and SwiftUI using Swift Package Manager. Xcode isn't required: the Command Line Tools (`xcode-select --install`) are enough.
 
 ```bash
-swift build && swift test                                # dev build + tests
+swift build && ./run_tests.sh                            # dev build + tests
 ./build_app_staging.sh && open ReadPlease-Staging.app    # isolated test build
 ./build_app.sh && open ReadPlease.app                    # production build
 ```

@@ -1,26 +1,26 @@
 import Darwin
 import Foundation
-import XCTest
+import Testing
 @testable import ReadPlease
 
 /// Exercises Foundation Process only with harmless, explicitly selected executables. No capture,
 /// desktop state, permission/preflight call or app launch is involved.
 @MainActor
-final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
-    func testRealRunnerCollectsStderrAndNonzeroStatus() async throws {
+@Suite final class NativeScreenCaptureProcessRunnerTests {
+    @Test func testRealRunnerCollectsStderrAndNonzeroStatus() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let errors = directory.appending(path: "stderr.txt")
         let status = try await NativeScreenCaptureProcessRunner().run(
             executableURL: URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", "echo x >&2; exit 1"],
             stderrURL: errors, outputURL: directory.appending(path: "unused.png"),
-            onPNGReady: { XCTFail("No PNG should exist") }
+            onPNGReady: { Issue.record("No PNG should exist") }
         )
-        XCTAssertEqual(status, 1)
-        XCTAssertEqual(try String(contentsOf: errors, encoding: .utf8), "x\n")
+        #expect(status == 1)
+        #expect((try String(contentsOf: errors, encoding: .utf8)) == "x\n")
     }
 
-    func testRealSleepCancellationWaitsForActualExit() async throws {
+    @Test func testRealSleepCancellationWaitsForActualExit() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let launched = LaunchProbe()
@@ -29,7 +29,7 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
             try await runner.run(
                 executableURL: URL(fileURLWithPath: "/bin/sleep"), arguments: ["30"],
                 stderrURL: directory.appending(path: "stderr.txt"), outputURL: directory.appending(path: "unused.png"),
-                onPNGReady: { XCTFail("No PNG should exist") }
+                onPNGReady: { Issue.record("No PNG should exist") }
             )
         }
         await waitUntil { await launched.pid != nil }
@@ -37,11 +37,11 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
         let started = ContinuousClock.now
         task.cancel()
         await assertCancelled(task)
-        XCTAssertLessThan(started.duration(to: .now), .seconds(5))
-        assertExited(try XCTUnwrap(pid))
+        #expect(started.duration(to: .now) < (.seconds(5)))
+        assertExited(try #require(pid))
     }
 
-    func testSIGTERMIgnoringChildIsKilledAfterGracePeriod() async throws {
+    @Test func testSIGTERMIgnoringChildIsKilledAfterGracePeriod() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let ready = directory.appending(path: "ready")
@@ -54,7 +54,7 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
                 executableURL: URL(fileURLWithPath: "/bin/sh"),
                 arguments: ["-c", "trap '' TERM; printf ready > \"$1\"; exec /bin/sleep 30", "--", ready.path],
                 stderrURL: directory.appending(path: "stderr.txt"), outputURL: directory.appending(path: "unused.png"),
-                onPNGReady: { XCTFail("No PNG should exist") }
+                onPNGReady: { Issue.record("No PNG should exist") }
             )
         }
         await waitUntil { FileManager.default.fileExists(atPath: ready.path) }
@@ -64,12 +64,12 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
         task.cancel()
         await assertCancelled(task)
         let elapsed = started.duration(to: .now)
-        XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(100))
-        XCTAssertLessThan(elapsed, .seconds(5))
-        assertExited(try XCTUnwrap(pid))
+        #expect(elapsed >= (.milliseconds(100)))
+        #expect(elapsed < (.seconds(5)))
+        assertExited(try #require(pid))
     }
 
-    func testRealRunnerDeliversIENDWhileProcessIsStillRunning() async throws {
+    @Test func testRealRunnerDeliversIENDWhileProcessIsStillRunning() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let output = directory.appending(path: "output.png")
@@ -87,38 +87,38 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
         // A truncated footer is not ready. Finish it while the harmless child keeps running.
         let footer = Data([0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82])
         try footer.prefix(8).write(to: output)
-        XCTAssertFalse(NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
+        #expect(!NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
         try footer.write(to: output)
         await waitUntil { await ready.pid != nil }
         let pid = await launched.pid
-        XCTAssertEqual(kill(try XCTUnwrap(pid), 0), 0)
+        #expect((kill(try #require(pid), 0)) == 0)
         task.cancel()
         await assertCancelled(task)
-        assertExited(try XCTUnwrap(pid))
+        assertExited(try #require(pid))
     }
 
-    func testIENDDetectorRejectsMissingShortAndWrongTrailer() throws {
+    @Test func testIENDDetectorRejectsMissingShortAndWrongTrailer() throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let output = directory.appending(path: "output.png")
-        XCTAssertFalse(NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
+        #expect(!NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
         try Data([0, 1]).write(to: output)
-        XCTAssertFalse(NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
+        #expect(!NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
         try Data(repeating: 0, count: 20).write(to: output)
-        XCTAssertFalse(NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
+        #expect(!NativeScreenCaptureProcessRunner.isCompletePNG(at: output))
     }
 
-    func testRealRunnerLaunchFailureReturnsWithoutPollingForever() async throws {
+    @Test func testRealRunnerLaunchFailureReturnsWithoutPollingForever() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         do {
             _ = try await NativeScreenCaptureProcessRunner().run(
                 executableURL: directory.appending(path: "nonexistent"), arguments: [],
                 stderrURL: directory.appending(path: "stderr.txt"), outputURL: directory.appending(path: "unused.png"),
-                onPNGReady: { XCTFail("No PNG should exist") }
+                onPNGReady: { Issue.record("No PNG should exist") }
             )
-            XCTFail("Expected launch failure")
-        } catch { XCTAssertFalse(error is CancellationError) }
+            Issue.record("Expected launch failure")
+        } catch { #expect(!(error is CancellationError)) }
     }
 
     private func makeDirectory() throws -> URL {
@@ -128,13 +128,13 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
     }
 
     private func assertCancelled(_ task: Task<Int32, any Error>) async {
-        do { _ = try await task.value; XCTFail("Expected cancellation") }
-        catch { XCTAssertTrue(error is CancellationError) }
+        do { _ = try await task.value; Issue.record("Expected cancellation") }
+        catch { #expect(error is CancellationError) }
     }
 
     private func assertExited(_ pid: Int32) {
-        XCTAssertEqual(kill(pid, 0), -1)
-        XCTAssertEqual(errno, ESRCH)
+        #expect(kill(pid, 0) == -1)
+        #expect(errno == ESRCH)
     }
 
     private func waitUntil(_ condition: () async -> Bool) async {
@@ -142,7 +142,7 @@ final class NativeScreenCaptureProcessRunnerTests: XCTestCase {
             if await condition() { return }
             try? await Task.sleep(for: .milliseconds(5))
         }
-        XCTFail("Timed out waiting for harmless child")
+        Issue.record("Timed out waiting for harmless child")
     }
 }
 

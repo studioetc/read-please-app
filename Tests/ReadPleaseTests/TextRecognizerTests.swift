@@ -2,12 +2,12 @@ import CoreGraphics
 import CoreText
 import Foundation
 import Vision
-import XCTest
+import Testing
 @testable import ReadPlease
 
-final class TextRecognizerTests: XCTestCase {
-    func testRecognizesCoreTextImageWithoutScreenCapture() async throws {
-        let context = try XCTUnwrap(CGContext(
+@Suite final class TextRecognizerTests {
+    @Test func testRecognizesCoreTextImageWithoutScreenCapture() async throws {
+        let context = try #require(CGContext(
             data: nil, width: 1100, height: 220, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
@@ -19,33 +19,35 @@ final class TextRecognizerTests: XCTestCase {
         ])
         context.textPosition = CGPoint(x: 40, y: 170)
         CTLineDraw(CTLineCreateWithAttributedString(text), context)
-        let region = CapturedRegion(image: try XCTUnwrap(context.makeImage()), pixelsPerPoint: 2)
+        let region = CapturedRegion(image: try #require(context.makeImage()), pixelsPerPoint: 2)
         let lines: [OCRLine]
         do {
             lines = try await TextRecognizer().recognize(region)
         } catch {
             guard Self.isOCRUnavailable(error) else { throw error }
-            throw XCTSkip("Vision OCR model or compute device is unavailable on this host: \(error.localizedDescription)")
+            // Swift Testing on Swift 6.2 has no runtime skip; treat an unavailable OCR host as a pass.
+            print("Skipping: Vision OCR model or compute device is unavailable on this host: \(error.localizedDescription)")
+            return
         }
-        XCTAssertTrue(lines.map(\.text).joined(separator: " ").lowercased().contains("the quick brown fox reads aloud"))
-        let first = try XCTUnwrap(lines.first)
-        XCTAssertGreaterThan(first.confidence, 0)
-        XCTAssertGreaterThan(first.box.width, 0)
-        XCTAssertGreaterThan(first.textHeight, 0)
-        XCTAssertGreaterThanOrEqual(first.box.minX, 0)
-        XCTAssertGreaterThanOrEqual(first.box.minY, 0)
-        XCTAssertLessThan(first.box.minY, CGFloat(region.image.height) / 3, "Text drawn near the top must use top-left image coordinates.")
-        XCTAssertLessThanOrEqual(first.box.maxX, CGFloat(region.image.width))
-        XCTAssertLessThanOrEqual(first.box.maxY, CGFloat(region.image.height))
+        #expect(lines.map(\.text).joined(separator: " ").lowercased().contains("the quick brown fox reads aloud"))
+        let first = try #require(lines.first)
+        #expect(first.confidence > 0)
+        #expect(first.box.width > 0)
+        #expect(first.textHeight > 0)
+        #expect(first.box.minX >= 0)
+        #expect(first.box.minY >= 0)
+        #expect(first.box.minY < (CGFloat(region.image.height) / 3), "Text drawn near the top must use top-left image coordinates.")
+        #expect(first.box.maxX <= CGFloat(region.image.width))
+        #expect(first.box.maxY <= CGFloat(region.image.height))
     }
 
-    func testOnlyKnownUnavailableErrorsPermitSkippingOCR() {
-        XCTAssertTrue(Self.isOCRUnavailable(VisionError.dataUnavailable("OCR model missing")))
-        XCTAssertTrue(Self.isOCRUnavailable(VisionError.unsupportedComputeDevice("Device unavailable")))
-        XCTAssertFalse(Self.isOCRUnavailable(VisionError.invalidArgument("Invalid request")))
-        XCTAssertFalse(Self.isOCRUnavailable(VisionError.operationFailed("Unexpected OCR failure")))
-        XCTAssertFalse(Self.isOCRUnavailable(CancellationError()))
-        XCTAssertFalse(Self.isOCRUnavailable(NSError(domain: "Unknown", code: 1)))
+    @Test func testOnlyKnownUnavailableErrorsPermitSkippingOCR() {
+        #expect(Self.isOCRUnavailable(VisionError.dataUnavailable("OCR model missing")))
+        #expect(Self.isOCRUnavailable(VisionError.unsupportedComputeDevice("Device unavailable")))
+        #expect(!(Self.isOCRUnavailable(VisionError.invalidArgument("Invalid request"))))
+        #expect(!(Self.isOCRUnavailable(VisionError.operationFailed("Unexpected OCR failure"))))
+        #expect(!(Self.isOCRUnavailable(CancellationError())))
+        #expect(!(Self.isOCRUnavailable(NSError(domain: "Unknown", code: 1))))
     }
 
     private static func isOCRUnavailable(_ error: any Error) -> Bool {

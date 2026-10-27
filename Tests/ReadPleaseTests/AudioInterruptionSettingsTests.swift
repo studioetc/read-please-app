@@ -1,19 +1,19 @@
 import Foundation
-import XCTest
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class AudioInterruptionSettingsTests: XCTestCase {
-    func testDefaultsToOffWithoutStoredPreference() {
+@Suite final class AudioInterruptionSettingsTests {
+    @Test func testDefaultsToOffWithoutStoredPreference() {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = AudioInterruptionSettings(defaults: defaults)
 
-        XCTAssertEqual(settings.mode, .off)
+        #expect(settings.mode == .off)
     }
 
-    func testMigratesLegacySpikePreference() {
+    @Test func testMigratesLegacySpikePreference() {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         defaults.set(
@@ -23,24 +23,18 @@ final class AudioInterruptionSettingsTests: XCTestCase {
 
         let settings = AudioInterruptionSettings(defaults: defaults)
 
-        XCTAssertEqual(settings.mode, .muteAllOtherAudioWhileSpeaking)
-        XCTAssertEqual(
-            defaults.string(forKey: "ReadPlease.audioInterruptionMode"),
-            AudioInterruptionMode.muteAllOtherAudioWhileSpeaking.rawValue
-        )
+        #expect(settings.mode == .muteAllOtherAudioWhileSpeaking)
+        #expect(defaults.string(forKey: "ReadPlease.audioInterruptionMode") == AudioInterruptionMode.muteAllOtherAudioWhileSpeaking.rawValue)
     }
 
-    func testPersistsModeChanges() {
+    @Test func testPersistsModeChanges() {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = AudioInterruptionSettings(defaults: defaults)
 
         settings.mode = .muteChromeWhileSpeaking
 
-        XCTAssertEqual(
-            defaults.string(forKey: "ReadPlease.audioInterruptionMode"),
-            AudioInterruptionMode.muteChromeWhileSpeaking.rawValue
-        )
+        #expect(defaults.string(forKey: "ReadPlease.audioInterruptionMode") == AudioInterruptionMode.muteChromeWhileSpeaking.rawValue)
     }
 
     private func makeDefaults() -> (UserDefaults, String) {

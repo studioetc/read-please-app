@@ -1,9 +1,10 @@
-import XCTest
+import Foundation
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class ShortcutStoreTests: XCTestCase {
-    func testStoreCreatesReadableV2Defaults() throws {
+@Suite final class ShortcutStoreTests {
+    @Test func testStoreCreatesReadableV2Defaults() throws {
         let configURL = makeTemporaryConfigURL()
         let store = ShortcutStore(
             configFileURL: configURL,
@@ -12,14 +13,14 @@ final class ShortcutStoreTests: XCTestCase {
             purgeKeyboardShortcutsOnInit: false
         )
 
-        XCTAssertTrue(FileManager.default.fileExists(atPath: configURL.path()))
-        XCTAssertEqual(store.bindings(for: .playPause).count, 2)
+        #expect(FileManager.default.fileExists(atPath: configURL.path()))
+        #expect(store.bindings(for: .playPause).count == 2)
 
         let object = try loadJSONObject(from: configURL)
-        XCTAssertEqual(object["version"] as? Int, 2)
+        #expect((object["version"] as? Int) == 2)
     }
 
-    func testManualReloadKeepsExistingBindingsWhenFileIsInvalid() throws {
+    @Test func testManualReloadKeepsExistingBindingsWhenFileIsInvalid() throws {
         let configURL = makeTemporaryConfigURL()
         let store = ShortcutStore(
             configFileURL: configURL,
@@ -56,12 +57,12 @@ final class ShortcutStoreTests: XCTestCase {
         try Data(invalidJSON.utf8).write(to: configURL, options: .atomic)
         store.reloadFromDiskManually()
 
-        XCTAssertEqual(store.bindings(for: .playPause), originalBindings)
-        XCTAssertEqual(store.banner?.tone, .error)
-        XCTAssertTrue(store.banner?.text.contains("assigned more than once") == true)
+        #expect(store.bindings(for: .playPause) == originalBindings)
+        #expect((store.banner?.tone) == .error)
+        #expect(store.banner?.text.contains("assigned more than once") == true)
     }
 
-    func testResetAllWritesReadableDefaults() throws {
+    @Test func testResetAllWritesReadableDefaults() throws {
         let configURL = makeTemporaryConfigURL()
         let store = ShortcutStore(
             configFileURL: configURL,
@@ -85,16 +86,16 @@ final class ShortcutStoreTests: XCTestCase {
         store.resetAll()
 
         let object = try loadJSONObject(from: configURL)
-        let actions = try XCTUnwrap(object["actions"] as? [String: Any])
-        let playPause = try XCTUnwrap(actions["playPause"] as? [[String: Any]])
-        let firstShortcut = try XCTUnwrap(playPause.first?["shortcut"] as? [String: Any])
+        let actions = try #require(object["actions"] as? [String: Any])
+        let playPause = try #require(actions["playPause"] as? [[String: Any]])
+        let firstShortcut = try #require(playPause.first?["shortcut"] as? [String: Any])
 
-        XCTAssertEqual(firstShortcut["key"] as? String, "backtick")
-        XCTAssertEqual(firstShortcut["modifiers"] as? [String], ["control"])
-        XCTAssertNil(playPause.first?["id"])
+        #expect((firstShortcut["key"] as? String) == "backtick")
+        #expect((firstShortcut["modifiers"] as? [String]) == (["control"]))
+        #expect((playPause.first?["id"]) == nil)
     }
 
-    func testOlderConfigAddsScreenAreaDefaultsAndPersistsWithoutChangingCustomizations() throws {
+    @Test func testOlderConfigAddsScreenAreaDefaultsAndPersistsWithoutChangingCustomizations() throws {
         let configURL = makeTemporaryConfigURL()
         defer { try? FileManager.default.removeItem(at: configURL.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -106,18 +107,18 @@ final class ShortcutStoreTests: XCTestCase {
         """.utf8).write(to: configURL)
         let store = ShortcutStore(configFileURL: configURL, registerBindingsOnChanges: false,
                                   syncRecorderStorageOnChanges: false, purgeKeyboardShortcutsOnInit: false)
-        XCTAssertNil(store.banner)
-        XCTAssertEqual(store.bindings(for: .playPause).first?.description, "My custom binding")
-        XCTAssertEqual(store.bindings(for: .playPause).first?.source, .custom)
-        XCTAssertTrue(store.bindings(for: .stop).isEmpty)
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.shortcut), ShortcutAction.readScreenArea.defaultBindings.map(\.shortcut))
+        #expect(store.banner == nil)
+        #expect((store.bindings(for: .playPause).first?.description) == "My custom binding")
+        #expect((store.bindings(for: .playPause).first?.source) == .custom)
+        #expect(store.bindings(for: .stop).isEmpty)
+        #expect(store.bindings(for: .readScreenArea).map(\.shortcut) == ShortcutAction.readScreenArea.defaultBindings.map(\.shortcut))
         let saved = try ShortcutConfigCodec.decodeFile(from: Data(contentsOf: configURL))
-        XCTAssertFalse(saved.needsMigration)
-        XCTAssertEqual(saved.bindingsByAction[.playPause]?.first?.shortcut, store.bindings(for: .playPause).first?.shortcut)
-        XCTAssertEqual(saved.bindingsByAction[.readScreenArea]?.count, 2)
+        #expect(!saved.needsMigration)
+        #expect((saved.bindingsByAction[.playPause]?.first?.shortcut) == (store.bindings(for: .playPause).first?.shortcut))
+        #expect((saved.bindingsByAction[.readScreenArea]?.count) == 2)
     }
 
-    func testMigrationOmitsConflictingDefaultAndShowsUsableF16() throws {
+    @Test func testMigrationOmitsConflictingDefaultAndShowsUsableF16() throws {
         let configURL = makeTemporaryConfigURL()
         defer { try? FileManager.default.removeItem(at: configURL.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -128,55 +129,55 @@ final class ShortcutStoreTests: XCTestCase {
         """.utf8).write(to: configURL)
         let store = ShortcutStore(configFileURL: configURL, registerBindingsOnChanges: false,
                                   syncRecorderStorageOnChanges: false, purgeKeyboardShortcutsOnInit: false)
-        XCTAssertNil(store.banner)
-        XCTAssertEqual(store.bindings(for: .playPause).count, 1)
-        XCTAssertEqual(store.bindings(for: .playPause).first?.enabled, true)
+        #expect(store.banner == nil)
+        #expect(store.bindings(for: .playPause).count == 1)
+        #expect((store.bindings(for: .playPause).first?.enabled) == true)
         let expected = [ShortcutAction.readScreenArea.defaultBindings[1].shortcut]
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.shortcut), expected)
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.enabled), [true])
+        #expect(store.bindings(for: .readScreenArea).map(\.shortcut) == expected)
+        #expect(store.bindings(for: .readScreenArea).map(\.enabled) == ([true]))
         let saved = try ShortcutConfigCodec.decodeBindings(from: Data(contentsOf: configURL))
-        XCTAssertEqual(saved[.readScreenArea]?.map(\.shortcut), expected)
-        XCTAssertEqual(saved[.readScreenArea]?.map(\.enabled), [true])
+        #expect((saved[.readScreenArea]?.map(\.shortcut)) == expected)
+        #expect((saved[.readScreenArea]?.map(\.enabled)) == ([true]))
     }
 
-    func testExplicitlyEmptyScreenAreaBindingsAreNotRestoredOnReload() throws {
+    @Test func testExplicitlyEmptyScreenAreaBindingsAreNotRestoredOnReload() throws {
         let configURL = makeTemporaryConfigURL()
         defer { try? FileManager.default.removeItem(at: configURL.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"version": 2, "actions": {"playPause": [], "stop": [], "readScreenArea": []}}"#.utf8).write(to: configURL)
         let store = ShortcutStore(configFileURL: configURL, registerBindingsOnChanges: false,
                                   syncRecorderStorageOnChanges: false, purgeKeyboardShortcutsOnInit: false)
-        XCTAssertNil(store.banner)
-        XCTAssertTrue(store.bindings(for: .readScreenArea).isEmpty)
+        #expect(store.banner == nil)
+        #expect(store.bindings(for: .readScreenArea).isEmpty)
         store.reloadFromDiskManually()
-        XCTAssertTrue(store.bindings(for: .readScreenArea).isEmpty)
+        #expect(store.bindings(for: .readScreenArea).isEmpty)
     }
 
-    func testExistingCustomScreenAreaBindingsSurviveReload() throws {
+    @Test func testExistingCustomScreenAreaBindingsSurviveReload() throws {
         let configURL = makeTemporaryConfigURL()
         defer { try? FileManager.default.removeItem(at: configURL.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"version":2,"actions":{"playPause":[],"stop":[],"readScreenArea":[{"shortcut":{"key":"f18","modifiers":["option"]},"enabled":false,"source":"custom"}]}}"#.utf8).write(to: configURL)
         let store = ShortcutStore(configFileURL: configURL, registerBindingsOnChanges: false,
                                   syncRecorderStorageOnChanges: false, purgeKeyboardShortcutsOnInit: false)
-        XCTAssertNil(store.banner)
-        let expected = try XCTUnwrap(store.bindings(for: .readScreenArea).first)
-        XCTAssertEqual(expected.source, .custom)
-        XCTAssertFalse(expected.enabled)
+        #expect(store.banner == nil)
+        let expected = try #require(store.bindings(for: .readScreenArea).first)
+        #expect(expected.source == .custom)
+        #expect(!expected.enabled)
         store.reloadFromDiskManually()
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.shortcut), [expected.shortcut])
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.enabled), [false])
+        #expect(store.bindings(for: .readScreenArea).map(\.shortcut) == ([expected.shortcut]))
+        #expect(store.bindings(for: .readScreenArea).map(\.enabled) == ([false]))
     }
 
-    func testMigrationLeavesScreenAreaEmptyWhenBothDefaultsConflict() throws {
+    @Test func testMigrationLeavesScreenAreaEmptyWhenBothDefaultsConflict() throws {
         let data = Data(#"{"version":2,"actions":{"playPause":[{"shortcut":{"key":"two","modifiers":["control"]}}],"stop":[{"shortcut":{"key":"f16","modifiers":[]}}]}}"#.utf8)
         let decoded = try ShortcutConfigCodec.decodeBindings(from: data)
-        XCTAssertEqual(decoded[.readScreenArea], [])
-        XCTAssertEqual(decoded[.playPause]?.count, 1)
-        XCTAssertEqual(decoded[.stop]?.count, 1)
+        #expect((decoded[.readScreenArea]) == ([]))
+        #expect((decoded[.playPause]?.count) == 1)
+        #expect((decoded[.stop]?.count) == 1)
     }
 
-    func testRecorderReenablesDisabledBindingForSameOrDifferentKey() throws {
+    @Test func testRecorderReenablesDisabledBindingForSameOrDifferentKey() throws {
         let configURL = makeTemporaryConfigURL()
         defer { try? FileManager.default.removeItem(at: configURL.deletingLastPathComponent()) }
         try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -185,19 +186,19 @@ final class ShortcutStoreTests: XCTestCase {
             try data.write(to: configURL, options: .atomic)
             let store = ShortcutStore(configFileURL: configURL, registerBindingsOnChanges: false,
                                       syncRecorderStorageOnChanges: false, purgeKeyboardShortcutsOnInit: false)
-            let existing = try XCTUnwrap(store.bindings(for: .readScreenArea).first)
+            let existing = try #require(store.bindings(for: .readScreenArea).first)
             let shortcut = useSameKey ? existing.shortcut : ShortcutAction.readScreenArea.defaultBindings[1].shortcut
             store.updateBinding(id: existing.id, in: .readScreenArea, shortcut: shortcut)
-            XCTAssertNil(store.banner)
-            XCTAssertEqual(store.bindings(for: .readScreenArea).first?.shortcut, shortcut)
-            XCTAssertEqual(store.bindings(for: .readScreenArea).first?.enabled, true)
-            XCTAssertEqual(store.bindings(for: .readScreenArea).first?.source, .custom)
+            #expect(store.banner == nil)
+            #expect((store.bindings(for: .readScreenArea).first?.shortcut) == shortcut)
+            #expect((store.bindings(for: .readScreenArea).first?.enabled) == true)
+            #expect((store.bindings(for: .readScreenArea).first?.source) == .custom)
             let saved = try ShortcutConfigCodec.decodeBindings(from: Data(contentsOf: configURL))
-            XCTAssertEqual(saved[.readScreenArea]?.first?.enabled, true)
+            #expect((saved[.readScreenArea]?.first?.enabled) == true)
         }
     }
 
-    func testDisabledBindingsSurviveLaunchAndReloadInPathWithSpaces() throws {
+    @Test func testDisabledBindingsSurviveLaunchAndReloadInPathWithSpaces() throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: "ReadPlease config \(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -206,11 +207,11 @@ final class ShortcutStoreTests: XCTestCase {
         try data.write(to: configURL)
         let store = ShortcutStore(configFileURL: configURL, registerBindingsOnChanges: false,
                                   syncRecorderStorageOnChanges: false, purgeKeyboardShortcutsOnInit: false)
-        XCTAssertNil(store.banner)
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.enabled), [false, true])
+        #expect(store.banner == nil)
+        #expect(store.bindings(for: .readScreenArea).map(\.enabled) == ([false, true]))
         store.reloadFromDiskManually()
-        XCTAssertEqual(store.bindings(for: .readScreenArea).map(\.enabled), [false, true])
-        XCTAssertEqual(try Data(contentsOf: configURL), data)
+        #expect(store.bindings(for: .readScreenArea).map(\.enabled) == ([false, true]))
+        #expect((try Data(contentsOf: configURL)) == data)
     }
 
     private func makeTemporaryConfigURL() -> URL {
@@ -220,6 +221,6 @@ final class ShortcutStoreTests: XCTestCase {
 
     private func loadJSONObject(from url: URL) throws -> [String: Any] {
         let data = try Data(contentsOf: url)
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 }

@@ -9,7 +9,8 @@ let package = Package(
         .macOS(.v15)
     ],
     dependencies: [
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0")
+        // Vendored with its #Preview blocks removed so Command Line Tools builds work — see ThirdParty/KeyboardShortcuts/VENDORED.md.
+        .package(path: "ThirdParty/KeyboardShortcuts")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.

@@ -1,20 +1,20 @@
 import CoreGraphics
 import Foundation
-import XCTest
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class ScreenAreaCoordinatorTests: XCTestCase {
-    func testPipelineOrdersFormatsAndSpeaksFreshText() async throws {
+@Suite final class ScreenAreaCoordinatorTests {
+    @Test func testPipelineOrdersFormatsAndSpeaksFreshText() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let (coordinator, _, engine) = makeCoordinator(capture: capture)
         coordinator.handle(.readScreenArea)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(engine.spokenTexts, ["An example appears."])
-        XCTAssertNil(coordinator.screenAreaOutcome)
+        #expect(engine.spokenTexts == (["An example appears."]))
+        #expect(coordinator.screenAreaOutcome == nil)
     }
 
-    func testPipelineKeepsDenseTableRowsSeparate() async throws {
+    @Test func testPipelineKeepsDenseTableRowsSeparate() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let (coordinator, _, engine) = makeCoordinator(capture: capture, recognize: { _ in
             [["Item", "Qty", "Price"], ["Pens", "12", "3.50"], ["Paper", "5", "8.00"]]
@@ -26,22 +26,22 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         })
         coordinator.handle(.readScreenArea)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(engine.spokenTexts, ["Item Qty Price\nPens 12 3.50\nPaper 5 8.00"])
+        #expect(engine.spokenTexts == (["Item Qty Price\nPens 12 3.50\nPaper 5 8.00"]))
     }
 
-    func testDuplicatePressIsIgnoredWhileCaptureIsPending() async throws {
+    @Test func testDuplicatePressIsIgnoredWhileCaptureIsPending() async throws {
         let capture = FakeRegionCapture()
         let (coordinator, _, engine) = makeCoordinator(capture: capture)
         coordinator.handle(.readScreenArea)
         await waitUntil { capture.callCount == 1 }
         coordinator.handle(.readScreenArea)
-        XCTAssertEqual(capture.callCount, 1)
+        #expect(capture.callCount == 1)
         capture.resolve(.success(try region()))
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(engine.spokenTexts.count, 1)
+        #expect(engine.spokenTexts.count == 1)
     }
 
-    func testStopDuringCaptureCancelsAndNeverRecognizesOrSpeaksLate() async throws {
+    @Test func testStopDuringCaptureCancelsAndNeverRecognizesOrSpeaksLate() async throws {
         let capture = FakeRegionCapture()
         let recognition = ControlledRecognition()
         let (coordinator, _, engine) = makeCoordinator(capture: capture, recognize: { await recognition.get($0) })
@@ -51,31 +51,31 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         capture.resolve(.success(try region()))
         await drainTasks()
         let calls = await recognition.callCount
-        XCTAssertEqual(calls, 0)
-        XCTAssertEqual(capture.cancelledReturnCount, 1)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
-        XCTAssertEqual(engine.stopCallCount, 1)
-        XCTAssertFalse(coordinator.isReadingScreenArea)
-        XCTAssertNil(coordinator.screenAreaOutcome)
+        #expect(calls == 0)
+        #expect(capture.cancelledReturnCount == 1)
+        #expect(engine.spokenTexts.isEmpty)
+        #expect(engine.stopCallCount == 1)
+        #expect(!coordinator.isReadingScreenArea)
+        #expect(coordinator.screenAreaOutcome == nil)
     }
 
-    func testStopDuringOCRCancelsAndIgnoresSecondPressWhileBusy() async throws {
+    @Test func testStopDuringOCRCancelsAndIgnoresSecondPressWhileBusy() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let recognition = ControlledRecognition()
         let (coordinator, _, engine) = makeCoordinator(capture: capture, recognize: { await recognition.get($0) })
         coordinator.handle(.readScreenArea)
         await waitUntil { await recognition.callCount == 1 }
         coordinator.handle(.readScreenArea)
-        XCTAssertEqual(capture.callCount, 1)
+        #expect(capture.callCount == 1)
         coordinator.handle(.stop)
         await recognition.resolve(with: Self.recognizedLines)
         await drainTasks()
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
-        XCTAssertFalse(coordinator.isReadingScreenArea)
-        XCTAssertNil(coordinator.screenAreaOutcome)
+        #expect(engine.spokenTexts.isEmpty)
+        #expect(!coordinator.isReadingScreenArea)
+        #expect(coordinator.screenAreaOutcome == nil)
     }
 
-    func testOldCaptureCleanupCannotClearNewCaptureAfterStop() async throws {
+    @Test func testOldCaptureCleanupCannotClearNewCaptureAfterStop() async throws {
         let capture = FakeRegionCapture()
         let (coordinator, _, engine) = makeCoordinator(capture: capture)
         coordinator.handle(.readScreenArea)
@@ -85,15 +85,15 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         await waitUntil { capture.callCount == 2 }
         capture.resolve(.success(try region()), at: 0)
         await drainTasks()
-        XCTAssertTrue(coordinator.isReadingScreenArea)
+        #expect(coordinator.isReadingScreenArea)
         coordinator.handle(.readScreenArea)
-        XCTAssertEqual(capture.callCount, 2)
+        #expect(capture.callCount == 2)
         capture.resolve(.success(try region()), at: 1)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(engine.spokenTexts, ["An example appears."])
+        #expect(engine.spokenTexts == (["An example appears."]))
     }
 
-    func testDirectPlaybackRevisionInvalidatesPendingOCRResult() async throws {
+    @Test func testDirectPlaybackRevisionInvalidatesPendingOCRResult() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let recognition = ControlledRecognition()
         let (coordinator, manager, engine) = makeCoordinator(capture: capture, recognize: { await recognition.get($0) })
@@ -102,11 +102,11 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         manager.play(text: "Newer scratchpad text")
         await recognition.resolve(with: Self.recognizedLines)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(engine.spokenTexts, ["Newer scratchpad text"])
-        XCTAssertNil(coordinator.screenAreaOutcome)
+        #expect(engine.spokenTexts == (["Newer scratchpad text"]))
+        #expect(coordinator.screenAreaOutcome == nil)
     }
 
-    func testDirectStopInvalidatesLateCaptureError() async {
+    @Test func testDirectStopInvalidatesLateCaptureError() async {
         let capture = FakeRegionCapture()
         let (coordinator, manager, engine) = makeCoordinator(capture: capture)
         coordinator.handle(.readScreenArea)
@@ -114,11 +114,11 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         manager.stop()
         capture.resolve(.failure(.failed("Late failure")))
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertNil(coordinator.screenAreaOutcome)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
+        #expect(coordinator.screenAreaOutcome == nil)
+        #expect(engine.spokenTexts.isEmpty)
     }
 
-    func testSelectionActionSupersedesPendingCapture() async throws {
+    @Test func testSelectionActionSupersedesPendingCapture() async throws {
         let capture = FakeRegionCapture()
         let (coordinator, _, engine) = makeCoordinator(capture: capture)
         coordinator.handle(.readScreenArea)
@@ -127,11 +127,11 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         await waitUntil { engine.spokenTexts.count == 1 }
         capture.resolve(.success(try region()))
         await drainTasks()
-        XCTAssertEqual(engine.spokenTexts, ["Selected text"])
-        XCTAssertNil(coordinator.screenAreaOutcome)
+        #expect(engine.spokenTexts == (["Selected text"]))
+        #expect(coordinator.screenAreaOutcome == nil)
     }
 
-    func testCaptureActionSupersedesPendingSelection() async throws {
+    @Test func testCaptureActionSupersedesPendingSelection() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let engine = ScreenAreaRecordingEngine()
         let manager = PlaybackManager(engine: engine, audioMuteController: ScreenAreaNoAudioMuter(), audioInterruptionMode: { .off })
@@ -147,52 +147,52 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
         await waitUntil { !coordinator.isReadingScreenArea }
         selectionContinuation?.resume(returning: "Old selected text")
         await drainTasks()
-        XCTAssertEqual(engine.spokenTexts, ["An example appears."])
+        #expect(engine.spokenTexts == (["An example appears."]))
     }
 
-    func testRecognitionCancellationIsSilentAndFailureHasDistinctOutcome() async throws {
+    @Test func testRecognitionCancellationIsSilentAndFailureHasDistinctOutcome() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let (cancelled, _, engine) = makeCoordinator(capture: capture, recognize: { _ in throw CancellationError() })
         cancelled.handle(.readScreenArea)
         await waitUntil { !cancelled.isReadingScreenArea }
-        XCTAssertNil(cancelled.screenAreaOutcome)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
+        #expect(cancelled.screenAreaOutcome == nil)
+        #expect(engine.spokenTexts.isEmpty)
         let (failed, _, failedEngine) = makeCoordinator(capture: capture, recognize: { _ in
             throw NSError(domain: "OCRFixture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Recognition failed"])
         })
         failed.handle(.readScreenArea)
         await waitUntil { !failed.isReadingScreenArea }
-        XCTAssertEqual(failed.screenAreaOutcome, .failed("Recognition failed"))
-        XCTAssertTrue(failedEngine.spokenTexts.isEmpty)
+        #expect(failed.screenAreaOutcome == (.failed("Recognition failed")))
+        #expect(failedEngine.spokenTexts.isEmpty)
     }
 
-    func testAbsentBackendIsFriendlyAndDoesNotSpeak() async {
+    @Test func testAbsentBackendIsFriendlyAndDoesNotSpeak() async {
         let (coordinator, _, engine) = makeCoordinator(capture: nil)
         coordinator.handle(.readScreenArea)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(coordinator.screenAreaOutcome, .notAvailableYet)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
+        #expect(coordinator.screenAreaOutcome == .notAvailableYet)
+        #expect(engine.spokenTexts.isEmpty)
     }
 
-    func testNewPlaybackHidesObsoleteScreenAreaOutcome() async {
+    @Test func testNewPlaybackHidesObsoleteScreenAreaOutcome() async {
         let (coordinator, manager, _) = makeCoordinator(capture: nil)
         coordinator.handle(.readScreenArea)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(coordinator.screenAreaOutcome, .notAvailableYet)
+        #expect(coordinator.screenAreaOutcome == .notAvailableYet)
         manager.play(text: "A newer scratchpad reading")
-        XCTAssertNil(coordinator.screenAreaOutcome)
+        #expect(coordinator.screenAreaOutcome == nil)
     }
 
-    func testEmptyOCRHasDistinctNoTextOutcome() async throws {
+    @Test func testEmptyOCRHasDistinctNoTextOutcome() async throws {
         let capture = FakeRegionCapture(result: .success(try region()))
         let (coordinator, _, engine) = makeCoordinator(capture: capture, recognize: { _ in [] })
         coordinator.handle(.readScreenArea)
         await waitUntil { !coordinator.isReadingScreenArea }
-        XCTAssertEqual(coordinator.screenAreaOutcome, .noTextFound)
-        XCTAssertTrue(engine.spokenTexts.isEmpty)
+        #expect(coordinator.screenAreaOutcome == .noTextFound)
+        #expect(engine.spokenTexts.isEmpty)
     }
 
-    func testCaptureOutcomesDistinguishCancellationPermissionAndFailure() async {
+    @Test func testCaptureOutcomesDistinguishCancellationPermissionAndFailure() async {
         for (error, expected): (RegionCaptureError, ScreenAreaReadOutcome?) in [
             (.cancelled, nil), (.permissionNeeded, .permissionNeeded), (.failed("Fixture error"), .failed("Fixture error")),
         ] {
@@ -200,8 +200,8 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
             let (coordinator, _, engine) = makeCoordinator(capture: capture)
             coordinator.handle(.readScreenArea)
             await waitUntil { !coordinator.isReadingScreenArea }
-            XCTAssertEqual(coordinator.screenAreaOutcome, expected)
-            XCTAssertTrue(engine.spokenTexts.isEmpty)
+            #expect(coordinator.screenAreaOutcome == expected)
+            #expect(engine.spokenTexts.isEmpty)
         }
     }
 
@@ -225,23 +225,22 @@ final class ScreenAreaCoordinatorTests: XCTestCase {
     }
 
     private func region() throws -> CapturedRegion {
-        let context = try XCTUnwrap(CGContext(
+        let context = try #require(CGContext(
             data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 0,
             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
-        return CapturedRegion(image: try XCTUnwrap(context.makeImage()), pixelsPerPoint: 2)
+        return CapturedRegion(image: try #require(context.makeImage()), pixelsPerPoint: 2)
     }
 
     private func waitUntil(
         _ condition: @MainActor () async -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
+        sourceLocation: SourceLocation = #_sourceLocation
     ) async {
         for _ in 0..<1000 {
             if await condition() { return }
             await Task.yield()
         }
-        XCTFail("Condition was not met", file: file, line: line)
+        Issue.record("Condition was not met", sourceLocation: sourceLocation)
     }
 
     private func drainTasks() async {

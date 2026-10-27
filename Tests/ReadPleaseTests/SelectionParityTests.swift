@@ -1,19 +1,23 @@
-import XCTest
+import Foundation
+import Testing
 @testable import ReadPlease
 
 @MainActor
-final class SelectionParityTests: XCTestCase {
-    func testOriginalPreview() { assertParity(0) }
-    func testOriginalSafari() { assertParity(1) }
-    func testArticle() { assertParity(2) }
-    func testPunctuation() { assertParity(3) }
-    func testList() { assertParity(4) }
-    func testNumbers() { assertParity(5) }
-    func testHyphenation() { assertParity(6) }
+@Suite final class SelectionParityTests {
+    @Test func testOriginalPreview() { assertParity(0) }
+    @Test func testOriginalSafari() { assertParity(1) }
+    @Test func testArticle() { assertParity(2) }
+    @Test func testPunctuation() { assertParity(3) }
+    @Test func testList() { assertParity(4) }
+    @Test func testNumbers() { assertParity(5) }
+    @Test func testHyphenation() { assertParity(6) }
 
-    private func assertParity(_ index: Int, file: StaticString = #filePath, line: UInt = #line) {
+    private func assertParity(_ index: Int, sourceLocation: SourceLocation = #_sourceLocation) {
         let fixture = SelectionParityFixtures.corpus[index]
-        XCTAssertEqual(SpeechTextFormatter.format(OCRLayout.readingOrderRows(fixture.lines)),
-                       fixture.expectedWithVisionGlyphs, fixture.name, file: file, line: line)
+        #expect(
+            SpeechTextFormatter.format(OCRLayout.readingOrderRows(fixture.lines)) == fixture.expectedWithVisionGlyphs,
+            Comment(rawValue: fixture.name),
+            sourceLocation: sourceLocation
+        )
     }
 }

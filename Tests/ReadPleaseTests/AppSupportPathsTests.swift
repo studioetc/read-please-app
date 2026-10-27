@@ -1,9 +1,9 @@
 import Foundation
-import XCTest
+import Testing
 @testable import ReadPlease
 
-final class AppSupportPathsTests: XCTestCase {
-    func testProductionURLMigratesExistingStagingConfigWhenDestinationIsMissing() throws {
+@Suite final class AppSupportPathsTests {
+    @Test func testProductionURLMigratesExistingStagingConfigWhenDestinationIsMissing() throws {
         let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let stagingURL = rootURL
             .appendingPathComponent(AppSupportPaths.stagingFolderName)
@@ -24,11 +24,11 @@ final class AppSupportPathsTests: XCTestCase {
             rootURL: rootURL
         )
 
-        XCTAssertEqual(resolvedURL, productionURL)
-        XCTAssertEqual(try Data(contentsOf: productionURL), Data("staging-config".utf8))
+        #expect(resolvedURL == productionURL)
+        #expect((try Data(contentsOf: productionURL)) == Data("staging-config".utf8))
     }
 
-    func testProductionURLLeavesExistingDestinationUntouched() throws {
+    @Test func testProductionURLLeavesExistingDestinationUntouched() throws {
         let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let stagingURL = rootURL
             .appendingPathComponent(AppSupportPaths.stagingFolderName)
@@ -54,10 +54,10 @@ final class AppSupportPathsTests: XCTestCase {
             rootURL: rootURL
         )
 
-        XCTAssertEqual(try Data(contentsOf: productionURL), Data("production".utf8))
+        #expect((try Data(contentsOf: productionURL)) == Data("production".utf8))
     }
 
-    func testStagingURLDoesNotCopyIntoProduction() throws {
+    @Test func testStagingURLDoesNotCopyIntoProduction() throws {
         let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let stagingURL = AppSupportPaths.configFileURL(
             fileName: "shortcuts.json",
@@ -65,19 +65,14 @@ final class AppSupportPathsTests: XCTestCase {
             rootURL: rootURL
         )
 
-        XCTAssertEqual(
-            stagingURL,
-            rootURL
+        #expect(stagingURL == (rootURL
                 .appendingPathComponent(AppSupportPaths.stagingFolderName)
-                .appendingPathComponent("shortcuts.json")
-        )
-        XCTAssertFalse(
-            FileManager.default.fileExists(
+                .appendingPathComponent("shortcuts.json")))
+        #expect(!(FileManager.default.fileExists(
                 atPath: rootURL
                     .appendingPathComponent(AppSupportPaths.productionFolderName)
                     .appendingPathComponent("shortcuts.json")
                     .path()
-            )
-        )
+            )))
     }
 }
