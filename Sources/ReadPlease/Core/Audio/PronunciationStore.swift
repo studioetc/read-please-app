@@ -66,7 +66,11 @@ final class PronunciationStore: @unchecked Sendable {
     /// Ensures the config file exists, then opens it in the default editor.
     func openConfigFile() {
         try? Self.ensureConfigFileExists(at: configFileURL)
-        NSWorkspace.shared.open(configFileURL)
+        // If the default JSON editor can't be launched (e.g. it's running from a deleted
+        // update folder), show the file in Finder instead of failing silently.
+        if !NSWorkspace.shared.open(configFileURL) {
+            NSWorkspace.shared.activateFileViewerSelecting([configFileURL])
+        }
     }
 
     private static func loadRuleSet(at configFileURL: URL) -> PronunciationRuleSet {
@@ -97,7 +101,7 @@ final class PronunciationStore: @unchecked Sendable {
             withIntermediateDirectories: true
         )
 
-        guard !FileManager.default.fileExists(atPath: configFileURL.path()) else { return }
+        guard !FileManager.default.fileExists(atPath: configFileURL.path(percentEncoded: false)) else { return }
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

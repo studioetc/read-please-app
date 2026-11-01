@@ -126,9 +126,10 @@ final class ShortcutStore {
     func openConfigFile() {
         persistCurrentState()
         guard NSWorkspace.shared.open(configFileURL) else {
+            NSWorkspace.shared.activateFileViewerSelecting([configFileURL])
             banner = ShortcutStoreBanner(
                 tone: .error,
-                text: "Couldn't open shortcuts.json in the default editor."
+                text: "Couldn't open shortcuts.json in the default editor, so it's shown in Finder."
             )
             return
         }
