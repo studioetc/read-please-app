@@ -7,7 +7,6 @@ final class ShortcutManager: @unchecked Sendable {
 
     var onAction: ((ShortcutAction) -> Void)?
     private var listenerTasks: [String: Task<Void, Never>] = [:]
-    private var isRecorderActive = false
 
     private init() {}
 
@@ -31,13 +30,8 @@ final class ShortcutManager: @unchecked Sendable {
         }
     }
 
-    func setRecorderActive(_ isActive: Bool) {
-        isRecorderActive = isActive
-    }
-
     private func handle(_ action: ShortcutAction) {
-        ScreenAreaTiming.logger.notice("shortcut_received action=\(action.rawValue, privacy: .public) recorder=\(self.isRecorderActive)")
-        guard !isRecorderActive else { return }
+        ScreenAreaTiming.logger.notice("shortcut_received action=\(action.rawValue, privacy: .public)")
         onAction?(action)
     }
 }

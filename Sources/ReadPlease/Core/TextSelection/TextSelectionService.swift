@@ -89,18 +89,16 @@ public final class TextSelectionService {
             return axText
         }
 
-        // Optional clipboard fallback (disabled by default)
+        // Clipboard fallback (on by default) for apps that don't expose selected text via AX.
         guard enableClipboardFallback else {
             print("TextSelectionService: No AX text and clipboard fallback disabled.")
             return nil
         }
 
-        // Check strict fallback list when enabled
         if isLikelyEditor(bundleID: bundleID, appName: appName)
             || accessibilityRestrictedApps.contains(bundleID)
         {
             print("TextSelectionService: Using clipboard fallback for editor/restricted app.")
-            return await getSelectedTextViaClipboard()
         }
 
         return await getSelectedTextViaClipboard()
@@ -215,7 +213,7 @@ public final class TextSelectionService {
                 print("TextSelectionService: Selected text is empty string")
                 return nil
             }
-            print("TextSelectionService: ✅ Got selected text: '\(text.prefix(50))...'")
+            print("TextSelectionService: ✅ Got selected text (\(text.count) characters)")
             return text
         }
 

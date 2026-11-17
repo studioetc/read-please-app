@@ -8,7 +8,7 @@ It lives in the menu bar, not the Dock, and stays out of the way until you need 
 
 ## Download
 
-**[Download the latest release →](https://github.com/studioetc/read-please/releases)**
+**[Download the latest release →](https://github.com/studioetc/read-please-app/releases)**
 
 Open the download and drag **Read Please** to your Applications folder.
 
@@ -37,6 +37,12 @@ When you first open the app it runs a quick setup:
 
 You can revisit any of this later from **Settings**.
 
+## Read Screen Area
+
+Some text can't be selected, like text in images, videos or screenshots. Choose **Read Screen Area** from the menu bar icon, drag a box around the text, and Read Please reads it aloud. You can also set a shortcut for it in Settings.
+
+This needs macOS **Screen Recording** permission. If it's missing, the menu links you to the right setting.
+
 ## Advanced Features
 
 **Add more shortcuts.** Want more than the two defaults? A JSON file lets you map any number of extra shortcuts. Personally, I use F15 and F16, plus keys mapped to a spare mouse button in Karabiner-Elements — so I never have to reach for the keyboard.
@@ -47,12 +53,13 @@ You can revisit any of this later from **Settings**.
 
 ## Privacy
 
-Read Please works **entirely on your Mac**. It only reads the text you've selected, speech is generated on-device, and nothing is sent anywhere.
+Read Please works **entirely on your Mac**. It only reads the text you've selected or the screen area you choose. Text recognition and speech happen on-device, and nothing is sent anywhere.
 
 ## Requirements
 
 - macOS 15 (Sequoia) or later
 - Accessibility permission (granted during setup)
+- Screen Recording permission, only for Read Screen Area
 
 ## Feedback
 
