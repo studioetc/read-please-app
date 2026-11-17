@@ -212,7 +212,10 @@ public class PlaybackManager {
     }
 
     func handleShortcutPlayPause(selectedText: String?) {
-        let hasSelection = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        // Compare trimmed text: `play` stores `currentText` trimmed, and selections often end in a
+        // newline (e.g. a triple-clicked paragraph), which would otherwise restart instead of pausing.
+        let trimmedSelection = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSelection = trimmedSelection?.isEmpty == false
 
         if state == .stopped {
             guard hasSelection, let selectedText else {
@@ -225,7 +228,7 @@ public class PlaybackManager {
             return
         }
 
-        if hasSelection, let selectedText, selectedText != currentText {
+        if hasSelection, let selectedText, trimmedSelection != currentText {
             ScreenAreaTiming.selectionText(selectedText)
             play(text: selectedText)
             return
