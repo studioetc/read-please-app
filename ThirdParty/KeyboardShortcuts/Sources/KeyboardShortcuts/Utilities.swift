@@ -9,8 +9,27 @@ extension String {
 	Makes the string localizable.
 	*/
 	var localized: String {
-		NSLocalizedString(self, bundle: .module, comment: self)
+		NSLocalizedString(self, bundle: .keyboardShortcutsResources, comment: self)
 	}
+}
+
+
+extension Bundle {
+	/**
+	ReadPlease change: look for the resource bundle in the app's `Contents/Resources` first.
+
+	SwiftPM's generated `Bundle.module` only checks the `.app` root (where codesign won't allow it) and an absolute path into the build folder, which exists only on the Mac that built the app. Anywhere else it hits `fatalError` when a recorder is created.
+	*/
+	static let keyboardShortcutsResources: Bundle = {
+		if
+			let url = Bundle.main.resourceURL?.appendingPathComponent("KeyboardShortcuts_KeyboardShortcuts.bundle"),
+			let bundle = Bundle(url: url)
+		{
+			return bundle
+		}
+
+		return .module
+	}()
 }
 
 
