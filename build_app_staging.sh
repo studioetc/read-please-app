@@ -1,4 +1,6 @@
 #!/bin/bash
+# Stop at the first failure, so a failed build never packages a stale binary.
+set -euo pipefail
 
 APP_NAME="ReadPlease"
 BUILD_DIR=".build/release"
@@ -17,10 +19,10 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Copy Binary
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
 
-# Copy SwiftPM resource bundles (e.g. KeyboardShortcuts) so Bundle.module resolves in the
-# packaged app; without them Settings crashes when it creates a shortcut recorder.
+# Copy SwiftPM resource bundles (e.g. KeyboardShortcuts) into Contents/Resources; without them
+# Settings crashes when it creates a shortcut recorder (see ThirdParty/KeyboardShortcuts/VENDORED.md).
 for bundle in "$BUILD_DIR"/*.bundle; do
-  [ -e "$bundle" ] && cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/"
+  if [ -e "$bundle" ]; then cp -R "$bundle" "$APP_BUNDLE/Contents/Resources/"; fi
 done
 
 # Include the MIT/BSD notices with redistributed binaries.
