@@ -124,7 +124,17 @@ final class ShortcutStore {
     }
 
     func openConfigFile() {
-        persistCurrentState()
+        // Only create the file if it's missing. Writing the in-memory bindings here would overwrite
+        // a hand-edited file that failed to load, which is exactly when the user opens it to fix it.
+        do {
+            try ensureConfigFileExists()
+        } catch {
+            banner = ShortcutStoreBanner(
+                tone: .error,
+                text: ShortcutStoreError.saveFailed(error.localizedDescription).localizedDescription
+            )
+            return
+        }
         guard NSWorkspace.shared.open(configFileURL) else {
             NSWorkspace.shared.activateFileViewerSelecting([configFileURL])
             banner = ShortcutStoreBanner(
