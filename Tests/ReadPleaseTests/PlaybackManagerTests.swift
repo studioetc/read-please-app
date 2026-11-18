@@ -31,6 +31,18 @@ import Testing
         manager.handleShortcutPlayPause(selectedText: "Current selection")
         #expect(engine.resumeCallCount == 1)
     }
+
+    @Test func testShortcutWithTrailingNewlineSelectionPausesInsteadOfRestarting() async {
+        let engine = RecordingTTSEngine()
+        let manager = PlaybackManager(engine: engine)
+
+        manager.handleShortcutPlayPause(selectedText: "Triple-clicked paragraph\n")
+        await Task.yield()
+        manager.handleShortcutPlayPause(selectedText: "Triple-clicked paragraph\n")
+
+        #expect(engine.spokenTexts == ["Triple-clicked paragraph"])
+        #expect(engine.pauseCallCount == 1)
+    }
 }
 
 @MainActor

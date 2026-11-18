@@ -169,6 +169,12 @@ public class PlaybackManager {
         statusMessage = nil
     }
 
+    /// Shown when a read fails because Accessibility isn't granted. Each new ad-hoc-signed build
+    /// invalidates an existing grant while System Settings still shows it switched on, so the
+    /// message covers that case too.
+    static let accessibilityNeededMessage =
+        "Read Please needs Accessibility permission. If it's already on in System Settings, remove Read Please from the list and add it again."
+
     private func setStatusMessage(_ message: String) {
         statusMessage = message
     }
@@ -192,10 +198,14 @@ public class PlaybackManager {
         case .paused:
             resume()
         case .stopped:
+            guard textSelectionService.isAccessibilityTrusted() else {
+                setStatusMessage(Self.accessibilityNeededMessage)
+                return
+            }
             guard let text = textSelectionService.getSelectedTextFromLastActiveAppViaAccessibility(),
                 !text.isEmpty
             else {
-                setStatusMessage("Couldn't read selected text here. Try F14 in the source app.")
+                setStatusMessage("Couldn't read selected text here. Try your Play/Pause shortcut in the source app.")
                 return
             }
             ScreenAreaTiming.selectionText(text)
@@ -212,12 +222,18 @@ public class PlaybackManager {
     }
 
     func handleShortcutPlayPause(selectedText: String?) {
-        let hasSelection = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        // Compare trimmed text: `play` stores `currentText` trimmed, and selections often end in a
+        // newline (e.g. a triple-clicked paragraph), which would otherwise restart instead of pausing.
+        let trimmedSelection = selectedText?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasSelection = trimmedSelection?.isEmpty == false
 
         if state == .stopped {
             guard hasSelection, let selectedText else {
                 print("No text selected")
-                setStatusMessage("No selected text found.")
+                setStatusMessage(
+                    textSelectionService.isAccessibilityTrusted()
+                        ? "No selected text found." : Self.accessibilityNeededMessage
+                )
                 return
             }
             ScreenAreaTiming.selectionText(selectedText)
@@ -225,7 +241,7 @@ public class PlaybackManager {
             return
         }
 
-        if hasSelection, let selectedText, selectedText != currentText {
+        if hasSelection, let selectedText, trimmedSelection != currentText {
             ScreenAreaTiming.selectionText(selectedText)
             play(text: selectedText)
             return

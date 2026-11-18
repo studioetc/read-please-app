@@ -50,6 +50,13 @@ struct SettingsView: View {
                     }
                     .settingsSpotlightAnchor(.shortcuts)
                 }
+
+                // Surfaces shortcuts.json load/save problems (e.g. a typo or duplicate key after
+                // editing the JSON by hand), which otherwise fail silently.
+                if let banner = shortcutStore.banner, banner.tone == .error {
+                    Label(banner.text, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
             }
 
             Section("Advanced") {
