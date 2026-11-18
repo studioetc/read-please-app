@@ -80,7 +80,16 @@ public class SystemTTSEngine: NSObject, TTSEngine, @preconcurrency AVSpeechSynth
         print("SystemTTSEngine: Speak command issued")
     }
 
+    /// Apple's speech engine can skip or garble words around U+2028 (LINE SEPARATOR) and U+2029
+    /// (PARAGRAPH SEPARATOR), which Apple Notes uses for soft line breaks. Speak them as plain
+    /// newlines, which every voice handles.
+    nonisolated static func normalizingLineSeparators(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{2028}", with: "\n")
+            .replacingOccurrences(of: "\u{2029}", with: "\n")
+    }
+
     private func makeUtterance(for text: String) -> AVSpeechUtterance {
+        let text = Self.normalizingLineSeparators(text)
         let ruleSet = pronunciationRules
         let ipaTerms = Set(ruleSet.ipaRules.map(\.term))
         let replacementRules = ruleSet.rules.filter { !ipaTerms.contains($0.term) }

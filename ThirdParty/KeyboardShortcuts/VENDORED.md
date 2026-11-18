@@ -8,4 +8,10 @@ Local changes, so the app builds with the Command Line Tools alone (no Xcode.app
   `#Preview` needs Xcode's `PreviewsMacros` plugin, which the Command Line Tools don't ship.
 - Removed the example app, tests, and images, and the test target from `Package.swift`.
 
+Local change so the packaged app finds its resources on any Mac:
+- `Sources/KeyboardShortcuts/Utilities.swift`: `String.localized` uses `Bundle.keyboardShortcutsResources`,
+  which looks in the app's `Contents/Resources` before falling back to `Bundle.module`. SwiftPM's
+  `Bundle.module` only checks the `.app` root and the build folder, so the downloaded app crashed
+  when Settings created a shortcut recorder.
+
 To update: copy the new release's `Sources/` and `Package.swift` over this folder, then reapply the changes above.
