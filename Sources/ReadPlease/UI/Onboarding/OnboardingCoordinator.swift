@@ -110,9 +110,8 @@ final class OnboardingCoordinator {
         open("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
     }
 
-    /// Open System Settings → Accessibility → Spoken Content (verified anchor, see
-    /// docs/voice-support-research.md §5). No anchor reaches the Manage Voices modal directly —
-    /// the download list is one ⓘ click beyond this pane.
+    /// Open System Settings → Accessibility → Spoken Content. No anchor reaches the Manage Voices
+    /// modal directly — the download list is one ⓘ click beyond this pane.
     func openVoiceDownloads() {
         open("x-apple.systempreferences:com.apple.Accessibility-Settings.extension?AX_SPOKEN_VOICE")
     }

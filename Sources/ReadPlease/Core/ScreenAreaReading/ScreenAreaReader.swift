@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class ScreenAreaReader {
-    /// The native-selector or frozen-overlay branch installs its backend here at app composition.
+    /// The app installs its capture backend here at launch (see `AppDelegate`).
     var captureBackend: (any RegionCapturing)?
     private let recognize: @Sendable (CapturedRegion) async throws -> [OCRLine]
 
